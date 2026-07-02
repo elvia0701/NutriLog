@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import '../widgets/dashboard_summary.dart';
 import '../widgets/meal_section.dart';
+import 'add_food_page.dart';
 
 class HomePage extends StatelessWidget {
   const HomePage({super.key});
@@ -26,7 +27,6 @@ class HomePage extends StatelessWidget {
                   fontWeight: FontWeight.bold,
                 ),
               ),
-
               SizedBox(height: 8),
 
               Text(

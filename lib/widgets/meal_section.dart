@@ -1,3 +1,4 @@
+import '../pages/add_food_page.dart';
 import 'package:flutter/material.dart';
 
 class MealSection extends StatelessWidget {
@@ -26,7 +27,14 @@ class MealSection extends StatelessWidget {
         ),
         const SizedBox(height: 12),
         OutlinedButton.icon(
-          onPressed: () {},
+          onPressed: () {
+            Navigator.push(
+              context,
+              MaterialPageRoute(
+                builder: (context) => const AddFoodPage(),
+              ),
+            );
+          },
           icon: const Icon(Icons.add),
           label: const Text("新增食物"),
           ),
