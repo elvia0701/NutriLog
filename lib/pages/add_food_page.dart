@@ -70,11 +70,7 @@ class _AddFoodPageState extends State<AddFoodPage> {
                     protein: double.parse(proteinController.text),
                   );
 
-                  print(newFood.name);
-                  print(newFood.calories);
-                  print(newFood.protein);
-
-                  Navigator.pop(context);
+                  Navigator.pop(context, newFood);
                 },
                 child: const Text('新增'),
               ),

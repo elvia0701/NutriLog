@@ -1,10 +1,18 @@
 import 'package:flutter/material.dart';
 import '../widgets/dashboard_summary.dart';
 import '../widgets/meal_section.dart';
+import '../models/food.dart';
 import 'add_food_page.dart';
 
-class HomePage extends StatelessWidget {
+class HomePage extends StatefulWidget {
   const HomePage({super.key});
+
+  @override
+  State<HomePage> createState() => _HomePageState();
+}
+
+class _HomePageState extends State<HomePage> {
+  final List<Food> foods = [];
 
   @override
   Widget build(BuildContext context) {
@@ -20,16 +28,16 @@ class HomePage extends StatelessWidget {
           padding: const EdgeInsets.all(20),
           child: ListView(
             children:  [
-              Text(
+              const Text(
                 'YL-Health',
                 style: TextStyle(
                   fontSize: 32,
                   fontWeight: FontWeight.bold,
                 ),
               ),
-              SizedBox(height: 8),
+              const SizedBox(height: 8),
 
-              Text(
+              const Text(
                 '今天',
                 style: TextStyle(
                   fontSize: 20,
@@ -37,21 +45,52 @@ class HomePage extends StatelessWidget {
                 ),
               ),
 
-              SizedBox(height: 24),
+              const SizedBox(height: 24),
 
-              DashboardSummary(),
+              const DashboardSummary(),
 
-              SizedBox(height: 24),
+              const SizedBox(height: 24),
 
-              MealSection(title: '早餐'),
-              MealSection(title: '午餐'),
-              MealSection(title: '晚餐'),
-              MealSection(title: '點心'),
+              MealSection(
+                title: '早餐',
+                foods: foods,
+              ),
+
+              MealSection(
+                title: '午餐',
+                foods: foods,
+              ),
+
+              MealSection(
+                title: '晚餐',
+                foods: foods,
+              ),
+
+              MealSection(
+                title: '點心',
+                foods: foods,
+              ),
             ],
           ),
         ),
       ),
+
+      floatingActionButton: FloatingActionButton(
+        onPressed: () async {
+          final Food? food = await Navigator.push(
+            context,
+            MaterialPageRoute(
+              builder: (context) => const AddFoodPage(),
+            ),
+          );
+            if (food != null) {
+            setState(() {
+              foods.add(food);
+            });
+          }
+        },
+        child: const Icon(Icons.add),
+    ),
     );
   }
 }
-

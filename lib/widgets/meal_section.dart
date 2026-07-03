@@ -1,12 +1,14 @@
-import '../pages/add_food_page.dart';
 import 'package:flutter/material.dart';
+import '../models/food.dart';
 
 class MealSection extends StatelessWidget {
   final String title;
+  final List<Food> foods;
 
   const MealSection({
   super.key,
   required this.title,
+  required this.foods,
   });
 
   @override
@@ -18,29 +20,23 @@ class MealSection extends StatelessWidget {
     child: Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Text(
-          title,
-          style: const TextStyle(
-            fontSize: 20,
-            fontWeight: FontWeight.bold,
-          ),
-        ),
-        const SizedBox(height: 12),
-        OutlinedButton.icon(
-          onPressed: () {
-            Navigator.push(
-              context,
-              MaterialPageRoute(
-                builder: (context) => const AddFoodPage(),
+            Text(
+              title,
+              style: const TextStyle(
+                fontSize: 20,
+                fontWeight: FontWeight.bold,
               ),
-            );
-          },
-          icon: const Icon(Icons.add),
-          label: const Text("新增食物"),
-          ),
-        ],
+            ),
+            const SizedBox(height: 12),
+
+            for (final food in foods)
+              Text(
+                '${food.name}｜${food.calories} kcal｜${food.protein} g',
+                style: const TextStyle(fontSize: 16),
+              ),
+          ],
+        ),
       ),
-    ),
     );
   }
 }
