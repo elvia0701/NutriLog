@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import '../widgets/dashboard_summary.dart';
 import '../widgets/meal_section.dart';
+import '../database/database_helper.dart';
 import '../models/food.dart';
 import 'add_food_page.dart';
 
@@ -12,7 +13,22 @@ class HomePage extends StatefulWidget {
 }
 
 class _HomePageState extends State<HomePage> {
-  final List<Food> foods = [];
+  List<Food> foods = [];
+
+  @override
+  void initState() {
+    super.initState();
+    loadFoods();
+  }
+
+  Future<void> loadFoods() async {
+    final loadedFoods = await DatabaseHelper.instance.getFoods();
+
+    setState(() {
+      foods = loadedFoods;
+    });
+  }
+
 
   @override
   Widget build(BuildContext context) {
@@ -84,9 +100,8 @@ class _HomePageState extends State<HomePage> {
             ),
           );
             if (food != null) {
-            setState(() {
-              foods.add(food);
-            });
+            await DatabaseHelper.instance.insertFood(food);
+            await loadFoods();
           }
         },
         child: const Icon(Icons.add),
