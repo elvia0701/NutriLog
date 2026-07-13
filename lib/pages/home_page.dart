@@ -1,9 +1,11 @@
 import 'package:flutter/material.dart';
+import 'package:health_app/models/food.dart';
+import 'add_food_page.dart';
+
 import '../widgets/dashboard_summary.dart';
 import '../widgets/meal_section.dart';
 import '../database/database_helper.dart';
-import '../models/food.dart';
-import 'add_food_page.dart';
+import '../models/meal_item.dart';
 
 class HomePage extends StatefulWidget {
   const HomePage({super.key});
@@ -15,18 +17,71 @@ class HomePage extends StatefulWidget {
 class _HomePageState extends State<HomePage> {
   List<Food> foods = [];
 
+  List<MealItem> breakfastItems = [];
+  List<MealItem> lunchItems = [];
+  List<MealItem> dinnerItems = [];
+  List<MealItem> snackItems = [];
+
   @override
   void initState() {
     super.initState();
     loadFoods();
+    loadMealItems();
   }
 
   Future<void> loadFoods() async {
     final loadedFoods = await DatabaseHelper.instance.getFoods();
 
+    final meals =
+    await DatabaseHelper.instance.getAllMealRecords();
+
+    debugPrint('========== MEAL RECORDS：${meals.length} ==========');
+
     setState(() {
       foods = loadedFoods;
     });
+  }
+
+  Future<void> loadMealItems() async {
+  final today = DateTime.now().toIso8601String().substring(0, 10);
+
+  final loadedBreakfast =
+      await DatabaseHelper.instance.getMealItemsByDateAndMealType(
+    today,
+    'breakfast',
+  );
+
+  final loadedLunch =
+      await DatabaseHelper.instance.getMealItemsByDateAndMealType(
+    today,
+    'lunch',
+  );
+
+  final loadedDinner =
+      await DatabaseHelper.instance.getMealItemsByDateAndMealType(
+    today,
+    'dinner',
+  );
+
+  final loadedSnack =
+      await DatabaseHelper.instance.getMealItemsByDateAndMealType(
+    today,
+    'snack',
+  );
+
+  if (!mounted) return;
+
+  setState(() {
+    breakfastItems = loadedBreakfast;
+    lunchItems = loadedLunch;
+    dinnerItems = loadedDinner;
+    snackItems = loadedSnack;
+  });
+
+  debugPrint('早餐紀錄：${breakfastItems.length}');
+  debugPrint('午餐紀錄：${lunchItems.length}');
+  debugPrint('晚餐紀錄：${dinnerItems.length}');
+  debugPrint('點心紀錄：${snackItems.length}');
   }
 
 
@@ -36,7 +91,7 @@ class _HomePageState extends State<HomePage> {
     const proteinGoal = 100;
     const currentCalories = 0;
     const currentProtein = 0;
-    const currentWeight = 91.3;
+    const currentWeight = 90.5;
 
     return Scaffold(
       body: SafeArea(
@@ -45,7 +100,7 @@ class _HomePageState extends State<HomePage> {
           child: ListView(
             children:  [
               const Text(
-                'YL-Health',
+                'NutriLog',
                 style: TextStyle(
                   fontSize: 32,
                   fontWeight: FontWeight.bold,
@@ -69,22 +124,25 @@ class _HomePageState extends State<HomePage> {
 
               MealSection(
                 title: '早餐',
-                foods: foods,
+                mealType: 'breakfast',
+                items: breakfastItems,
               ),
-
               MealSection(
                 title: '午餐',
-                foods: foods,
+                mealType: 'lunch',
+                items: lunchItems,
               ),
 
               MealSection(
                 title: '晚餐',
-                foods: foods,
+                mealType: 'dinner',
+                items: dinnerItems,
               ),
 
               MealSection(
                 title: '點心',
-                foods: foods,
+                mealType: 'snack',
+                items: snackItems,
               ),
             ],
           ),
