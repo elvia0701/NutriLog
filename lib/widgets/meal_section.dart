@@ -1,5 +1,5 @@
 import 'package:flutter/material.dart';
-import '../pages/add_food_page.dart';
+import '../pages/food_database_page.dart';
 import '../models/meal_item.dart';
 
 class MealSection extends StatelessWidget {
@@ -85,7 +85,7 @@ class MealSection extends StatelessWidget {
                 final added = await Navigator.push<bool>(
                   context,
                   MaterialPageRoute(
-                    builder: (context) => AddFoodPage(mealType: mealType),
+                    builder: (context) => FoodDatabasePage(mealType: mealType),
                   ),
                 );
 
@@ -94,7 +94,7 @@ class MealSection extends StatelessWidget {
                 }
               },
               icon: const Icon(Icons.add),
-              label: const Text('新增食物'),
+              label: const Text('新增餐點'),
             ),
           ],
         ),

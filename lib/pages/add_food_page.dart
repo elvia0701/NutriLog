@@ -1,8 +1,13 @@
 import 'package:flutter/material.dart';
 
-import '../database/database_helper.dart';
 import '../models/food.dart';
-import '../models/meal_record.dart';
+
+class AddFoodResult {
+  final Food food;
+  final double servings;
+
+  const AddFoodResult({required this.food, required this.servings});
+}
 
 class AddFoodPage extends StatefulWidget {
   final String? mealType;
@@ -48,33 +53,12 @@ class _AddFoodPageState extends State<AddFoodPage> {
       return;
     }
 
-    final newFood = Food(name: name, calories: calories, protein: protein);
-
-    // 從首頁右下角按鈕進入：
-    // 只回傳 Food，由 HomePage 負責寫入 foods。
-    if (widget.mealType == null) {
-      Navigator.pop(context, newFood);
-      return;
-    }
-
-    // 從早餐、午餐、晚餐或點心進入：
-    // 先新增 Food，再建立 MealRecord。
-    final foodId = await DatabaseHelper.instance.insertFood(newFood);
-
-    final today = DateTime.now().toIso8601String().substring(0, 10);
-
-    final mealRecord = MealRecord(
-      date: today,
-      mealType: widget.mealType!,
-      foodId: foodId,
+    final result = AddFoodResult(
+      food: Food(name: name, calories: calories, protein: protein),
       servings: servings,
     );
 
-    await DatabaseHelper.instance.insertMealRecord(mealRecord);
-
-    if (!mounted) return;
-
-    Navigator.pop(context, true);
+    Navigator.pop(context, result);
   }
 
   @override
@@ -135,7 +119,7 @@ class _AddFoodPageState extends State<AddFoodPage> {
               width: double.infinity,
               child: ElevatedButton(
                 onPressed: saveFood,
-                child: Text(widget.mealType == null ? '建立食物' : '加入這一餐'),
+                child: Text(widget.mealType == null ? '建立食物' : '建立並加入這一餐'),
               ),
             ),
           ],

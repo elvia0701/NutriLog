@@ -154,12 +154,12 @@ class _HomePageState extends State<HomePage> {
 
       floatingActionButton: FloatingActionButton(
         onPressed: () async {
-          final Food? food = await Navigator.push(
+          final AddFoodResult? result = await Navigator.push(
             context,
             MaterialPageRoute(builder: (context) => const AddFoodPage()),
           );
-          if (food != null) {
-            await DatabaseHelper.instance.insertFood(food);
+          if (result != null) {
+            await DatabaseHelper.instance.insertFood(result.food);
             await loadFoods();
           }
         },
