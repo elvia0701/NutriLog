@@ -1,5 +1,5 @@
 import 'package:flutter/material.dart';
-import 'package:health_app/models/food.dart';
+import 'package:nutrilog/models/food.dart';
 import 'add_food_page.dart';
 
 import '../widgets/dashboard_summary.dart';

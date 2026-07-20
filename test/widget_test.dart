@@ -8,10 +8,10 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
-import 'package:health_app/pages/add_food_page.dart';
-import 'package:health_app/models/meal_item.dart';
-import 'package:health_app/widgets/dashboard_summary.dart';
-import 'package:health_app/widgets/meal_section.dart';
+import 'package:nutrilog/pages/add_food_page.dart';
+import 'package:nutrilog/models/meal_item.dart';
+import 'package:nutrilog/widgets/dashboard_summary.dart';
+import 'package:nutrilog/widgets/meal_section.dart';
 
 void main() {
   testWidgets('Add food page renders its input fields', (

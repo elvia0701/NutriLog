@@ -2,21 +2,18 @@ import 'package:flutter/material.dart';
 import 'pages/home_page.dart';
 
 void main() {
-  runApp(const HealthApp());
+  runApp(const NutriLogApp());
 }
 
-class HealthApp extends StatelessWidget {
-  const HealthApp({super.key});
+class NutriLogApp extends StatelessWidget {
+  const NutriLogApp({super.key});
 
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
       debugShowCheckedModeBanner: false,
-      title: 'YL-Health',
-      theme: ThemeData(
-        colorSchemeSeed: Colors.green,
-        useMaterial3: true,
-      ),
+      title: 'NutriLog',
+      theme: ThemeData(colorSchemeSeed: Colors.green, useMaterial3: true),
       home: const HomePage(),
     );
   }
