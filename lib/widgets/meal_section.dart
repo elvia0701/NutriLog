@@ -6,13 +6,45 @@ class MealSection extends StatelessWidget {
   final String title;
   final String mealType;
   final List<MealItem> items;
+  final Future<void> Function() onMealAdded;
+  final Future<void> Function(MealItem item) onDelete;
 
   const MealSection({
-  super.key,
-  required this.title,
-  required this.mealType,
-  required this.items,
+    super.key,
+    required this.title,
+    required this.mealType,
+    required this.items,
+    required this.onMealAdded,
+    required this.onDelete,
   });
+
+  String _formatNumber(num value) {
+    return value.toStringAsFixed(6).replaceFirst(RegExp(r'\.?0+$'), '');
+  }
+
+  Future<void> _confirmDelete(BuildContext context, MealItem item) async {
+    final shouldDelete = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('刪除餐點紀錄？'),
+        content: Text('確定要刪除「${item.foodName}」嗎？'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('取消'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(context, true),
+            child: const Text('刪除'),
+          ),
+        ],
+      ),
+    );
+
+    if (shouldDelete == true) {
+      await onDelete(item);
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -26,38 +58,40 @@ class MealSection extends StatelessWidget {
           children: [
             Text(
               '$title（${items.length}）',
-              style: const TextStyle(
-                fontSize: 20,
-                fontWeight: FontWeight.bold,
-              ),
+              style: const TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
             ),
             const SizedBox(height: 12),
             if (items.isEmpty)
-              const Text(
-                '尚無紀錄',
-                style: TextStyle(color: Colors.grey),
-              )
+              const Text('尚無紀錄', style: TextStyle(color: Colors.grey))
             else
               ...items.map(
                 (item) => ListTile(
                   contentPadding: EdgeInsets.zero,
                   title: Text(item.foodName),
                   subtitle: Text(
-                    '${item.totalCalories.toStringAsFixed(0)} kcal • '
-                    '${item.totalProtein.toStringAsFixed(1)} g',
+                    '${_formatNumber(item.servings)} 份 • '
+                    '${_formatNumber(item.totalCalories)} kcal • '
+                    '${_formatNumber(item.totalProtein)} g',
+                  ),
+                  trailing: IconButton(
+                    onPressed: () => _confirmDelete(context, item),
+                    tooltip: '刪除餐點',
+                    icon: const Icon(Icons.delete_outline),
                   ),
                 ),
               ),
             OutlinedButton.icon(
-              onPressed: () {
-                Navigator.push(
+              onPressed: () async {
+                final added = await Navigator.push<bool>(
                   context,
                   MaterialPageRoute(
-                    builder: (context) => AddFoodPage(
-                      mealType: mealType,
-                    ),
+                    builder: (context) => AddFoodPage(mealType: mealType),
                   ),
                 );
+
+                if (added == true) {
+                  await onMealAdded();
+                }
               },
               icon: const Icon(Icons.add),
               label: const Text('新增食物'),

@@ -1,7 +1,18 @@
 import 'package:flutter/material.dart';
 
 class DashboardSummary extends StatelessWidget {
-  const DashboardSummary({super.key});
+  final double totalCalories;
+  final double totalProtein;
+
+  const DashboardSummary({
+    super.key,
+    required this.totalCalories,
+    required this.totalProtein,
+  });
+
+  String _formatNumber(num value) {
+    return value.toStringAsFixed(6).replaceFirst(RegExp(r'\.?0+$'), '');
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -11,33 +22,17 @@ class DashboardSummary extends StatelessWidget {
       child: Padding(
         padding: const EdgeInsets.all(16),
         child: Column(
-          children: const [
+          children: [
             Text(
-              "🔥 1280 / 1600 kcal",
-              style: TextStyle(
-                fontSize: 22,
-                fontWeight: FontWeight.bold,
-              ),
+              '🔥 ${_formatNumber(totalCalories)} / 1600 kcal',
+              style: const TextStyle(fontSize: 22, fontWeight: FontWeight.bold),
             ),
 
-            SizedBox(height: 12),
+            const SizedBox(height: 12),
 
             Text(
-              "🥩 95 / 100 g",
-              style: TextStyle(
-                fontSize: 20,
-                fontWeight: FontWeight.w600,
-              ),
-            ),
-
-            SizedBox(height: 8),
-
-            Text(
-              "⚖️ 91.7 kg",
-              style: TextStyle(
-                fontSize: 20,
-                fontWeight: FontWeight.w600,
-              ),
+              '🥩 ${_formatNumber(totalProtein)} / 100 g',
+              style: const TextStyle(fontSize: 20, fontWeight: FontWeight.w600),
             ),
           ],
         ),
