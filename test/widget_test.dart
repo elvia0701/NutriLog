@@ -8,6 +8,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
+import 'package:nutrilog/database/database_helper.dart';
 import 'package:nutrilog/models/food.dart';
 import 'package:nutrilog/pages/add_food_page.dart';
 import 'package:nutrilog/models/meal_item.dart';
@@ -144,6 +145,113 @@ void main() {
 
     expect(find.text('食物資料庫目前沒有食物'), findsOneWidget);
     expect(find.text('建立第一個食物'), findsOneWidget);
+  });
+
+  testWidgets('Unused food can be deleted without clearing search', (
+    WidgetTester tester,
+  ) async {
+    int? deletedFoodId;
+    await tester.pumpWidget(
+      MaterialApp(
+        home: FoodDatabasePage(
+          mealType: 'breakfast',
+          loadFoods: () async => [
+            Food(id: 1, name: 'Apple', calories: 95, protein: 0.5),
+            Food(id: 2, name: '香蕉', calories: 90, protein: 1.1),
+          ],
+          getFoodReferenceCount: (foodId) async => 0,
+          removeFood: (foodId) async {
+            deletedFoodId = foodId;
+            return FoodRemovalResult.deleted;
+          },
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    await tester.enterText(find.byKey(const Key('foodSearchField')), 'app');
+    await tester.pump();
+    await tester.tap(find.byKey(const ValueKey('delete_food_1')));
+    await tester.pumpAndSettle();
+
+    expect(find.text('確定要永久刪除「Apple」嗎？此操作無法復原。'), findsOneWidget);
+
+    await tester.tap(find.text('移除'));
+    await tester.pumpAndSettle();
+
+    expect(deletedFoodId, 1);
+    expect(find.text('Apple'), findsNothing);
+    expect(find.text('app'), findsOneWidget);
+    expect(find.text('找不到食物'), findsOneWidget);
+  });
+
+  testWidgets('Referenced food is archived and removed from search results', (
+    WidgetTester tester,
+  ) async {
+    await tester.pumpWidget(
+      MaterialApp(
+        home: FoodDatabasePage(
+          mealType: 'lunch',
+          loadFoods: () async => [
+            Food(id: 7, name: '茶葉蛋', calories: 70, protein: 6),
+          ],
+          getFoodReferenceCount: (foodId) async => 1,
+          removeFood: (foodId) async => FoodRemovalResult.archived,
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    await tester.enterText(find.byKey(const Key('foodSearchField')), '茶葉');
+    await tester.pump();
+    await tester.tap(find.byKey(const ValueKey('delete_food_7')));
+    await tester.pumpAndSettle();
+
+    expect(
+      find.text(
+        '「茶葉蛋」曾用於歷史飲食紀錄。'
+        '移除後會封存並從可選食物中隱藏，歷史餐點會保留。',
+      ),
+      findsOneWidget,
+    );
+
+    await tester.tap(find.text('移除'));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 300));
+
+    expect(find.text('茶葉蛋'), findsNothing);
+    expect(find.text('茶葉'), findsOneWidget);
+    expect(find.text('食物已封存，歷史餐點仍會保留。'), findsOneWidget);
+  });
+
+  testWidgets('Cancelling food deletion leaves the food unchanged', (
+    WidgetTester tester,
+  ) async {
+    var deleteCalls = 0;
+    await tester.pumpWidget(
+      MaterialApp(
+        home: FoodDatabasePage(
+          mealType: 'snack',
+          loadFoods: () async => [
+            Food(id: 9, name: '優格', calories: 100, protein: 8),
+          ],
+          getFoodReferenceCount: (foodId) async => 0,
+          removeFood: (foodId) async {
+            deleteCalls += 1;
+            return FoodRemovalResult.deleted;
+          },
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.byKey(const ValueKey('delete_food_9')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('取消'));
+    await tester.pumpAndSettle();
+
+    expect(deleteCalls, 0);
+    expect(find.text('優格'), findsOneWidget);
   });
 
   testWidgets('Selecting an existing food only creates a meal record', (

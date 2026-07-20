@@ -6,6 +6,7 @@ class Food {
   final double carbs;
   final double fat;
   final bool favorite;
+  final bool isArchived;
 
   Food({
     this.id,
@@ -15,6 +16,7 @@ class Food {
     this.carbs = 0,
     this.fat = 0,
     this.favorite = false,
+    this.isArchived = false,
   });
 
   Map<String, dynamic> toMap() {
@@ -26,6 +28,7 @@ class Food {
       'carbs': carbs,
       'fat': fat,
       'favorite': favorite ? 1 : 0,
+      'is_archived': isArchived ? 1 : 0,
     };
   }
 
@@ -38,6 +41,7 @@ class Food {
       carbs: (map['carbs'] as num).toDouble(),
       fat: (map['fat'] as num).toDouble(),
       favorite: map['favorite'] == 1,
+      isArchived: (map['is_archived'] as int? ?? 0) == 1,
     );
   }
 }

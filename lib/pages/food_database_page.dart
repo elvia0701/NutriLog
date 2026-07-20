@@ -10,6 +10,8 @@ class FoodDatabasePage extends StatefulWidget {
   final Future<List<Food>> Function()? loadFoods;
   final Future<int> Function(Food food)? insertFood;
   final Future<int> Function(MealRecord mealRecord)? insertMealRecord;
+  final Future<int> Function(int foodId)? getFoodReferenceCount;
+  final Future<FoodRemovalResult> Function(int foodId)? removeFood;
 
   const FoodDatabasePage({
     super.key,
@@ -17,6 +19,8 @@ class FoodDatabasePage extends StatefulWidget {
     this.loadFoods,
     this.insertFood,
     this.insertMealRecord,
+    this.getFoodReferenceCount,
+    this.removeFood,
   });
 
   @override
@@ -58,6 +62,20 @@ class _FoodDatabasePageState extends State<FoodDatabasePage> {
       return widget.insertMealRecord!(mealRecord);
     }
     return DatabaseHelper.instance.insertMealRecord(mealRecord);
+  }
+
+  Future<int> _getFoodReferenceCount(int foodId) {
+    if (widget.getFoodReferenceCount != null) {
+      return widget.getFoodReferenceCount!(foodId);
+    }
+    return DatabaseHelper.instance.getFoodReferenceCount(foodId);
+  }
+
+  Future<FoodRemovalResult> _removeFood(int foodId) {
+    if (widget.removeFood != null) {
+      return widget.removeFood!(foodId);
+    }
+    return DatabaseHelper.instance.removeFood(foodId);
   }
 
   Future<void> _loadFoods() async {
@@ -121,6 +139,60 @@ class _FoodDatabasePageState extends State<FoodDatabasePage> {
     await _saveMealRecord(foodId: foodId, servings: result.servings);
     if (!mounted) return;
     Navigator.pop(context, true);
+  }
+
+  Future<void> _confirmAndRemoveFood(Food food) async {
+    final foodId = food.id;
+    if (foodId == null) return;
+
+    final referenceCount = await _getFoodReferenceCount(foodId);
+    if (!mounted) return;
+    final hasReferences = referenceCount > 0;
+
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('移除食物？'),
+        content: Text(
+          hasReferences
+              ? '「${food.name}」曾用於歷史飲食紀錄。'
+                    '移除後會封存並從可選食物中隱藏，歷史餐點會保留。'
+              : '確定要永久刪除「${food.name}」嗎？此操作無法復原。',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext, false),
+            child: const Text('取消'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(dialogContext, true),
+            child: const Text('移除'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true) return;
+
+    final result = await _removeFood(foodId);
+    if (!mounted) return;
+
+    if (result == FoodRemovalResult.notFound) {
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('找不到這項食物，列表將重新整理。')));
+      await _loadFoods();
+      return;
+    }
+
+    setState(() {
+      _foods.removeWhere((item) => item.id == foodId);
+    });
+
+    if (result == FoodRemovalResult.archived) {
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('食物已封存，歷史餐點仍會保留。')));
+    }
   }
 
   Widget _buildEmptyState() {
@@ -204,7 +276,14 @@ class _FoodDatabasePageState extends State<FoodDatabasePage> {
                             '每份 ${food.calories} kcal • '
                             '蛋白質 ${_formatNumber(food.protein)} g',
                           ),
-                          trailing: const Icon(Icons.chevron_right),
+                          trailing: IconButton(
+                            key: ValueKey('delete_food_${food.id}'),
+                            onPressed: food.id == null
+                                ? null
+                                : () => _confirmAndRemoveFood(food),
+                            tooltip: '移除食物',
+                            icon: const Icon(Icons.delete_outline),
+                          ),
                           onTap: () => _selectFood(food),
                         );
                       },
