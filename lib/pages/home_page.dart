@@ -7,9 +7,11 @@ import '../widgets/meal_section.dart';
 import '../database/database_helper.dart';
 import '../models/meal_item.dart';
 import '../models/weight_record.dart';
+import '../models/nutrition_goal.dart';
 import '../utils/local_date.dart';
 import '../widgets/weight_entry_dialog.dart';
 import 'weight_history_page.dart';
+import 'nutrition_goal_page.dart';
 
 class HomePage extends StatefulWidget {
   final DateTime? todayOverride;
@@ -20,6 +22,8 @@ class HomePage extends StatefulWidget {
   final Future<void> Function(String date, double weight)? weightSaver;
   final Future<void> Function(String date)? weightDeleter;
   final Future<List<WeightRecord>> Function()? weightHistoryLoader;
+  final Future<NutritionGoal?> Function(String date)? goalLoader;
+  final Future<void> Function(NutritionGoal goal)? goalSaver;
 
   const HomePage({
     super.key,
@@ -30,6 +34,8 @@ class HomePage extends StatefulWidget {
     this.weightSaver,
     this.weightDeleter,
     this.weightHistoryLoader,
+    this.goalLoader,
+    this.goalSaver,
   });
 
   @override
@@ -46,6 +52,7 @@ class _HomePageState extends State<HomePage> {
   late DateTime selectedDate;
   bool historicalDateUnlocked = false;
   WeightRecord? selectedWeight;
+  NutritionGoal? selectedGoal;
 
   DateTime get today => localDateOnly(widget.todayOverride ?? DateTime.now());
   bool get isViewingToday => isSameLocalDate(selectedDate, today);
@@ -95,6 +102,7 @@ class _HomePageState extends State<HomePage> {
       _loadMealType(requestedDate, 'dinner'),
       _loadMealType(requestedDate, 'snack'),
       _loadWeight(requestedDate),
+      _loadGoal(requestedDate),
     ]);
 
     if (!mounted) return;
@@ -106,6 +114,7 @@ class _HomePageState extends State<HomePage> {
       dinnerItems = results[2] as List<MealItem>;
       snackItems = results[3] as List<MealItem>;
       selectedWeight = results[4] as WeightRecord?;
+      selectedGoal = results[5] as NutritionGoal?;
     });
   }
 
@@ -123,6 +132,13 @@ class _HomePageState extends State<HomePage> {
     if (loader != null) return loader(date);
     if (widget.mealItemsLoader != null) return Future.value();
     return DatabaseHelper.instance.getWeightRecordByDate(date);
+  }
+
+  Future<NutritionGoal?> _loadGoal(String date) {
+    final loader = widget.goalLoader;
+    if (loader != null) return loader(date);
+    if (widget.mealItemsLoader != null) return Future.value();
+    return DatabaseHelper.instance.getNutritionGoalForDate(date);
   }
 
   Future<void> deleteMealItem(MealItem item) async {
@@ -195,6 +211,22 @@ class _HomePageState extends State<HomePage> {
     );
   }
 
+  Future<void> _openGoalSettings() async {
+    final currentGoal = await _loadGoal(databaseDate(today));
+    if (!mounted) return;
+    final changed = await Navigator.push<bool>(
+      context,
+      MaterialPageRoute(
+        builder: (context) => NutritionGoalPage(
+          todayOverride: today,
+          initialGoal: currentGoal,
+          saveGoal: widget.goalSaver,
+        ),
+      ),
+    );
+    if (changed == true) await loadMealItems();
+  }
+
   Future<void> _changeDate(DateTime value) async {
     final date = localDateOnly(value);
     if (date.isAfter(today)) return;
@@ -206,6 +238,7 @@ class _HomePageState extends State<HomePage> {
       dinnerItems = [];
       snackItems = [];
       selectedWeight = null;
+      selectedGoal = null;
     });
     await loadMealItems();
   }
@@ -352,6 +385,8 @@ class _HomePageState extends State<HomePage> {
               DashboardSummary(
                 totalCalories: totalCalories,
                 totalProtein: totalProtein,
+                goal: selectedGoal,
+                onOpenGoalSettings: _openGoalSettings,
                 weight: selectedWeight?.weight,
                 canEditWeight: canEditRecords,
                 onEditWeight: _editWeight,

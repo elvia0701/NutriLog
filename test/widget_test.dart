@@ -14,9 +14,11 @@ import 'package:nutrilog/pages/add_food_page.dart';
 import 'package:nutrilog/models/meal_item.dart';
 import 'package:nutrilog/models/meal_record.dart';
 import 'package:nutrilog/models/weight_record.dart';
+import 'package:nutrilog/models/nutrition_goal.dart';
 import 'package:nutrilog/pages/food_database_page.dart';
 import 'package:nutrilog/pages/home_page.dart';
 import 'package:nutrilog/pages/weight_history_page.dart';
+import 'package:nutrilog/pages/nutrition_goal_page.dart';
 import 'package:nutrilog/widgets/dashboard_summary.dart';
 import 'package:nutrilog/widgets/meal_section.dart';
 import 'package:nutrilog/widgets/weight_entry_dialog.dart';
@@ -58,13 +60,23 @@ void main() {
     await tester.pumpWidget(
       const MaterialApp(
         home: Scaffold(
-          body: DashboardSummary(totalCalories: 450, totalProtein: 32.5),
+          body: DashboardSummary(
+            totalCalories: 450,
+            totalProtein: 32.5,
+            goal: NutritionGoal(
+              effectiveDate: '2026-07-20',
+              calorieTarget: 1600,
+              proteinTarget: 100,
+            ),
+          ),
         ),
       ),
     );
 
-    expect(find.text('🔥 450 / 1600 kcal'), findsOneWidget);
-    expect(find.text('🥩 32.5 / 100 g'), findsOneWidget);
+    expect(find.text('🔥 熱量：450 / 1600 kcal'), findsOneWidget);
+    expect(find.text('🥩 蛋白質：32.5 / 100 g'), findsOneWidget);
+    expect(find.text('剩餘熱量：1150 kcal'), findsOneWidget);
+    expect(find.text('剩餘蛋白質：67.5 g'), findsOneWidget);
   });
 
   testWidgets('Meal servings default to one', (WidgetTester tester) async {
@@ -462,6 +474,17 @@ void main() {
         home: HomePage(
           todayOverride: DateTime(2026, 7, 20),
           mealItemsLoader: loader,
+          goalLoader: (date) async => date == '2026-07-20'
+              ? const NutritionGoal(
+                  effectiveDate: '2026-07-20',
+                  calorieTarget: 1600,
+                  proteinTarget: 100,
+                )
+              : const NutritionGoal(
+                  effectiveDate: '2026-07-01',
+                  calorieTarget: 1400,
+                  proteinTarget: 80,
+                ),
         ),
       ),
     );
@@ -469,8 +492,8 @@ void main() {
 
     expect(find.text('今天'), findsOneWidget);
     expect(find.text('2026年7月20日'), findsOneWidget);
-    expect(find.text('🔥 100 / 1600 kcal'), findsOneWidget);
-    expect(find.text('🥩 10 / 100 g'), findsOneWidget);
+    expect(find.text('🔥 熱量：100 / 1600 kcal'), findsOneWidget);
+    expect(find.text('🥩 蛋白質：10 / 100 g'), findsOneWidget);
     final nextButton = tester.widget<IconButton>(
       find.byKey(const Key('nextDayButton')),
     );
@@ -481,8 +504,8 @@ void main() {
 
     expect(find.text('2026年7月19日 星期日'), findsOneWidget);
     expect(find.text('昨日早餐'), findsOneWidget);
-    expect(find.text('🔥 120 / 1600 kcal'), findsOneWidget);
-    expect(find.text('🥩 8 / 100 g'), findsOneWidget);
+    expect(find.text('🔥 熱量：120 / 1400 kcal'), findsOneWidget);
+    expect(find.text('🥩 蛋白質：8 / 80 g'), findsOneWidget);
     expect(find.text('今天午餐'), findsNothing);
     expect(find.text('此日已封存'), findsOneWidget);
     expect(find.text('新增餐點'), findsNothing);
@@ -714,5 +737,120 @@ void main() {
     );
     await tester.pumpAndSettle();
     expect(find.text('尚無體重紀錄'), findsOneWidget);
+  });
+
+  testWidgets('Dashboard shows unconfigured goals and exceeded amounts', (
+    WidgetTester tester,
+  ) async {
+    await tester.pumpWidget(
+      const MaterialApp(
+        home: Scaffold(
+          body: DashboardSummary(totalCalories: 450, totalProtein: 32.5),
+        ),
+      ),
+    );
+
+    expect(find.text('🔥 熱量：已攝取 450 kcal'), findsOneWidget);
+    expect(find.text('🥩 蛋白質：已攝取 32.5 g'), findsOneWidget);
+    expect(find.text('尚未設定目標'), findsOneWidget);
+
+    await tester.pumpWidget(
+      const MaterialApp(
+        home: Scaffold(
+          body: DashboardSummary(
+            totalCalories: 1700,
+            totalProtein: 120,
+            goal: NutritionGoal(
+              effectiveDate: '2026-07-20',
+              calorieTarget: 1600,
+              proteinTarget: 100,
+            ),
+          ),
+        ),
+      ),
+    );
+
+    expect(find.text('超出熱量：100 kcal'), findsOneWidget);
+    expect(find.text('超出蛋白質：20 g'), findsOneWidget);
+    expect(find.textContaining('-'), findsNothing);
+  });
+
+  testWidgets('Goal settings validate input and reload Home after saving', (
+    WidgetTester tester,
+  ) async {
+    NutritionGoal? storedGoal;
+    await tester.pumpWidget(
+      MaterialApp(
+        home: HomePage(
+          todayOverride: DateTime(2026, 7, 20),
+          mealItemsLoader: (_, _) async => [],
+          goalLoader: (_) async => storedGoal,
+          goalSaver: (goal) async => storedGoal = goal,
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.text('尚未設定目標'), findsOneWidget);
+    await tester.tap(find.byKey(const Key('nutritionGoalSettingsButton')));
+    await tester.pumpAndSettle();
+
+    expect(find.text('營養目標設定'), findsOneWidget);
+    expect(find.text('目標不會隨體重自動變更'), findsOneWidget);
+    expect(find.text('目前顯示建議值；完成儲存前尚未建立目標。'), findsOneWidget);
+    expect(find.text('2026-07-20'), findsOneWidget);
+
+    final calorieField = tester.widget<TextFormField>(
+      find.byKey(const Key('calorieTargetField')),
+    );
+    final proteinField = tester.widget<TextFormField>(
+      find.byKey(const Key('proteinTargetField')),
+    );
+    expect(calorieField.controller?.text, '1600');
+    expect(proteinField.controller?.text, '100');
+
+    await tester.enterText(find.byKey(const Key('calorieTargetField')), '0');
+    await tester.enterText(
+      find.byKey(const Key('proteinTargetField')),
+      'not-a-number',
+    );
+    await tester.tap(find.byKey(const Key('saveNutritionGoalButton')));
+    await tester.pump();
+
+    expect(find.text('每日熱量目標必須介於 100–10000 kcal'), findsOneWidget);
+    expect(find.text('請輸入有效的每日蛋白質目標'), findsOneWidget);
+    expect(storedGoal, isNull);
+
+    await tester.enterText(find.byKey(const Key('calorieTargetField')), '1800');
+    await tester.enterText(
+      find.byKey(const Key('proteinTargetField')),
+      '120.5',
+    );
+    await tester.tap(find.byKey(const Key('saveNutritionGoalButton')));
+    await tester.pumpAndSettle();
+
+    expect(storedGoal?.effectiveDate, '2026-07-20');
+    expect(storedGoal?.calorieTarget, 1800);
+    expect(storedGoal?.proteinTarget, 120.5);
+    expect(find.text('🔥 熱量：0 / 1800 kcal'), findsOneWidget);
+    expect(find.text('🥩 蛋白質：0 / 120.5 g'), findsOneWidget);
+  });
+
+  testWidgets('Goal page does not allow an effective date before today', (
+    WidgetTester tester,
+  ) async {
+    await tester.pumpWidget(
+      MaterialApp(
+        home: NutritionGoalPage(todayOverride: DateTime(2026, 7, 20)),
+      ),
+    );
+    await tester.tap(find.byKey(const Key('effectiveDatePicker')));
+    await tester.pumpAndSettle();
+
+    final calendar = tester.widget<CalendarDatePicker>(
+      find.byType(CalendarDatePicker),
+    );
+    expect(calendar.firstDate, DateTime(2026, 7, 20));
+    expect(calendar.initialDate, DateTime(2026, 7, 20));
   });
 }

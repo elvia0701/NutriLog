@@ -5,12 +5,13 @@ import '../models/food.dart';
 import '../models/meal_record.dart';
 import '../models/meal_item.dart';
 import '../models/weight_record.dart';
+import '../models/nutrition_goal.dart';
 
 enum FoodRemovalResult { deleted, archived, notFound }
 
 class DatabaseHelper {
   static final DatabaseHelper instance = DatabaseHelper._();
-  static const databaseVersion = 5;
+  static const databaseVersion = 6;
 
   final DatabaseFactory? _databaseFactoryOverride;
   final String? _databasePathOverride;
@@ -75,6 +76,7 @@ class DatabaseHelper {
 
     await _createMealRecordsTable(db);
     await _createWeightRecordsTable(db);
+    await _createGoalsTable(db);
   }
 
   Future<void> _onUpgrade(Database db, int oldVersion, int newVersion) async {
@@ -92,6 +94,9 @@ class DatabaseHelper {
     }
     if (oldVersion < 5) {
       await _createWeightRecordsTable(db);
+    }
+    if (oldVersion < 6) {
+      await _createGoalsTable(db);
     }
   }
 
@@ -166,6 +171,19 @@ class DatabaseHelper {
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         date TEXT NOT NULL UNIQUE,
         weight REAL NOT NULL CHECK (weight >= 20 AND weight <= 500)
+      )
+    ''');
+  }
+
+  Future<void> _createGoalsTable(Database db) async {
+    await db.execute('''
+      CREATE TABLE IF NOT EXISTS goals (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        effective_date TEXT NOT NULL UNIQUE,
+        calorie_target REAL NOT NULL
+          CHECK (calorie_target >= 100 AND calorie_target <= 10000),
+        protein_target REAL NOT NULL
+          CHECK (protein_target >= 1 AND protein_target <= 1000)
       )
     ''');
   }
@@ -379,5 +397,69 @@ class DatabaseHelper {
   Future<int> deleteWeightRecord(String date) async {
     final db = await database;
     return db.delete('weight_records', where: 'date = ?', whereArgs: [date]);
+  }
+
+  // --------------------
+  // Nutrition goals
+  // --------------------
+
+  Future<void> saveNutritionGoal(NutritionGoal goal) async {
+    if (!goal.calorieTarget.isFinite ||
+        goal.calorieTarget < 100 ||
+        goal.calorieTarget > 10000) {
+      throw ArgumentError.value(
+        goal.calorieTarget,
+        'calorieTarget',
+        'Calorie target must be between 100 and 10000 kcal.',
+      );
+    }
+    if (!goal.proteinTarget.isFinite ||
+        goal.proteinTarget < 1 ||
+        goal.proteinTarget > 1000) {
+      throw ArgumentError.value(
+        goal.proteinTarget,
+        'proteinTarget',
+        'Protein target must be between 1 and 1000 g.',
+      );
+    }
+
+    final db = await database;
+    await db.transaction((transaction) async {
+      final updated = await transaction.update(
+        'goals',
+        {
+          'calorie_target': goal.calorieTarget,
+          'protein_target': goal.proteinTarget,
+        },
+        where: 'effective_date = ?',
+        whereArgs: [goal.effectiveDate],
+      );
+      if (updated == 0) {
+        await transaction.insert('goals', {
+          'effective_date': goal.effectiveDate,
+          'calorie_target': goal.calorieTarget,
+          'protein_target': goal.proteinTarget,
+        });
+      }
+    });
+  }
+
+  Future<NutritionGoal?> getNutritionGoalForDate(String date) async {
+    final db = await database;
+    final maps = await db.query(
+      'goals',
+      where: 'effective_date <= ?',
+      whereArgs: [date],
+      orderBy: 'effective_date DESC',
+      limit: 1,
+    );
+    if (maps.isEmpty) return null;
+    return NutritionGoal.fromMap(maps.single);
+  }
+
+  Future<List<NutritionGoal>> getNutritionGoals() async {
+    final db = await database;
+    final maps = await db.query('goals', orderBy: 'effective_date ASC');
+    return maps.map(NutritionGoal.fromMap).toList();
   }
 }

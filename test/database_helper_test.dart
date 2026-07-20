@@ -7,6 +7,7 @@ import 'package:sqflite_common_ffi/sqflite_ffi.dart';
 import 'package:nutrilog/database/database_helper.dart';
 import 'package:nutrilog/models/food.dart';
 import 'package:nutrilog/models/meal_record.dart';
+import 'package:nutrilog/models/nutrition_goal.dart';
 
 void main() {
   sqfliteFfiInit();
@@ -241,7 +242,7 @@ void main() {
     );
     final db = await migratedDatabase.database;
 
-    expect(await db.getVersion(), 5);
+    expect(await db.getVersion(), DatabaseHelper.databaseVersion);
     expect((await migratedDatabase.getFoods()).single.name, '升版前食物');
     expect(
       (await migratedDatabase.getAllMealRecords()).single.foodNameSnapshot,
@@ -339,5 +340,110 @@ void main() {
         throwsArgumentError,
       );
     }
+  });
+
+  test('first nutrition goal is created and same date is updated', () async {
+    await databaseHelper.saveNutritionGoal(
+      const NutritionGoal(
+        effectiveDate: '2026-07-20',
+        calorieTarget: 1600,
+        proteinTarget: 100,
+      ),
+    );
+    await databaseHelper.saveNutritionGoal(
+      const NutritionGoal(
+        effectiveDate: '2026-07-20',
+        calorieTarget: 1700,
+        proteinTarget: 110,
+      ),
+    );
+
+    final goals = await databaseHelper.getNutritionGoals();
+    expect(goals, hasLength(1));
+    expect(goals.single.calorieTarget, 1700);
+    expect(goals.single.proteinTarget, 110);
+  });
+
+  test('nutrition goal lookup uses latest effective version by date', () async {
+    await databaseHelper.saveNutritionGoal(
+      const NutritionGoal(
+        effectiveDate: '2026-07-20',
+        calorieTarget: 1600,
+        proteinTarget: 100,
+      ),
+    );
+    await databaseHelper.saveNutritionGoal(
+      const NutritionGoal(
+        effectiveDate: '2026-08-01',
+        calorieTarget: 1800,
+        proteinTarget: 120,
+      ),
+    );
+
+    expect(await databaseHelper.getNutritionGoalForDate('2026-07-19'), isNull);
+    expect(
+      (await databaseHelper.getNutritionGoalForDate(
+        '2026-07-31',
+      ))?.calorieTarget,
+      1600,
+    );
+    expect(
+      (await databaseHelper.getNutritionGoalForDate(
+        '2026-08-01',
+      ))?.calorieTarget,
+      1800,
+    );
+    expect(
+      (await databaseHelper.getNutritionGoalForDate(
+        '2026-08-20',
+      ))?.proteinTarget,
+      120,
+    );
+  });
+
+  test('version 5 goals migration preserves existing weight data', () async {
+    final tempDirectory = await Directory.systemTemp.createTemp(
+      'nutrilog_goals_migration_',
+    );
+    final databasePath = path.join(tempDirectory.path, 'health_app.db');
+    final version5Database = await databaseFactoryFfi.openDatabase(
+      databasePath,
+      options: OpenDatabaseOptions(
+        version: 5,
+        onCreate: (db, version) async {
+          await db.execute('''
+            CREATE TABLE weight_records (
+              id INTEGER PRIMARY KEY AUTOINCREMENT,
+              date TEXT NOT NULL UNIQUE,
+              weight REAL NOT NULL
+            )
+          ''');
+        },
+      ),
+    );
+    await version5Database.insert('weight_records', {
+      'date': '2026-07-20',
+      'weight': 90.5,
+    });
+    await version5Database.close();
+
+    final migratedDatabase = DatabaseHelper.forTesting(
+      databaseFactoryFfi,
+      databasePath: databasePath,
+    );
+    final db = await migratedDatabase.database;
+
+    expect(await db.getVersion(), DatabaseHelper.databaseVersion);
+    expect(
+      (await migratedDatabase.getWeightRecordByDate('2026-07-20'))?.weight,
+      90.5,
+    );
+    final goalsTable = await db.rawQuery(
+      "SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'goals'",
+    );
+    expect(goalsTable, hasLength(1));
+
+    await migratedDatabase.close();
+    await tempDirectory.delete(recursive: true);
   });
 }
