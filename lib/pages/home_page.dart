@@ -87,12 +87,6 @@ class _HomePageState extends State<HomePage> {
 
   @override
   Widget build(BuildContext context) {
-    const calorieGoal = 1600;
-    const proteinGoal = 100;
-    const currentCalories = 0;
-    const currentProtein = 0;
-    const currentWeight = 90.5;
-
     return Scaffold(
       body: SafeArea(
         child: Padding(
@@ -157,7 +151,7 @@ class _HomePageState extends State<HomePage> {
               builder: (context) => const AddFoodPage(),
             ),
           );
-            if (food != null) {
+          if (food != null) {
             await DatabaseHelper.instance.insertFood(food);
             await loadFoods();
           }
