@@ -14,6 +14,7 @@ import 'package:nutrilog/pages/add_food_page.dart';
 import 'package:nutrilog/models/meal_item.dart';
 import 'package:nutrilog/models/meal_record.dart';
 import 'package:nutrilog/pages/food_database_page.dart';
+import 'package:nutrilog/pages/home_page.dart';
 import 'package:nutrilog/widgets/dashboard_summary.dart';
 import 'package:nutrilog/widgets/meal_section.dart';
 
@@ -110,6 +111,7 @@ void main() {
       MaterialApp(
         home: FoodDatabasePage(
           mealType: 'breakfast',
+          date: '2026-07-20',
           loadFoods: () async => foods,
         ),
       ),
@@ -138,7 +140,11 @@ void main() {
   ) async {
     await tester.pumpWidget(
       MaterialApp(
-        home: FoodDatabasePage(mealType: 'lunch', loadFoods: () async => []),
+        home: FoodDatabasePage(
+          mealType: 'lunch',
+          date: '2026-07-20',
+          loadFoods: () async => [],
+        ),
       ),
     );
     await tester.pumpAndSettle();
@@ -155,6 +161,7 @@ void main() {
       MaterialApp(
         home: FoodDatabasePage(
           mealType: 'breakfast',
+          date: '2026-07-20',
           loadFoods: () async => [
             Food(id: 1, name: 'Apple', calories: 95, protein: 0.5),
             Food(id: 2, name: '香蕉', calories: 90, protein: 1.1),
@@ -192,6 +199,7 @@ void main() {
       MaterialApp(
         home: FoodDatabasePage(
           mealType: 'lunch',
+          date: '2026-07-20',
           loadFoods: () async => [
             Food(id: 7, name: '茶葉蛋', calories: 70, protein: 6),
           ],
@@ -232,6 +240,7 @@ void main() {
       MaterialApp(
         home: FoodDatabasePage(
           mealType: 'snack',
+          date: '2026-07-20',
           loadFoods: () async => [
             Food(id: 9, name: '優格', calories: 100, protein: 8),
           ],
@@ -261,6 +270,7 @@ void main() {
     MealRecord? insertedMealRecord;
     final page = FoodDatabasePage(
       mealType: 'dinner',
+      date: '2026-07-19',
       loadFoods: () async => [
         Food(id: 7, name: '茶葉蛋', calories: 70, protein: 6),
       ],
@@ -305,7 +315,11 @@ void main() {
     expect(insertedFoodCount, 0);
     expect(insertedMealRecord?.foodId, 7);
     expect(insertedMealRecord?.mealType, 'dinner');
+    expect(insertedMealRecord?.date, '2026-07-19');
     expect(insertedMealRecord?.servings, 2);
+    expect(insertedMealRecord?.foodNameSnapshot, '茶葉蛋');
+    expect(insertedMealRecord?.caloriesSnapshot, 70);
+    expect(insertedMealRecord?.proteinSnapshot, 6);
   });
 
   testWidgets('Creating a new food inserts one food and one meal record', (
@@ -317,6 +331,7 @@ void main() {
     MealRecord? insertedMealRecord;
     final page = FoodDatabasePage(
       mealType: 'snack',
+      date: '2026-07-20',
       loadFoods: () async => [
         Food(id: 1, name: '香蕉', calories: 90, protein: 1.1),
       ],
@@ -351,6 +366,7 @@ void main() {
     expect(insertedMealRecord?.foodId, 42);
     expect(insertedMealRecord?.mealType, 'snack');
     expect(insertedMealRecord?.servings, 1.5);
+    expect(insertedMealRecord?.foodNameSnapshot, '優格');
   });
 
   testWidgets('Meal item displays details and confirms deletion', (
@@ -374,6 +390,8 @@ void main() {
           body: MealSection(
             title: '早餐',
             mealType: 'breakfast',
+            date: '2026-07-20',
+            canEdit: true,
             items: [item],
             onMealAdded: () async {},
             onDelete: (item) async {
@@ -399,5 +417,110 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(deletedRecordId, 7);
+  });
+
+  testWidgets('Home switches dates and keeps daily summaries independent', (
+    WidgetTester tester,
+  ) async {
+    Future<List<MealItem>> loader(String date, String mealType) async {
+      if (date == '2026-07-20' && mealType == 'lunch') {
+        return [
+          MealItem(
+            recordId: 1,
+            foodId: 1,
+            date: date,
+            mealType: mealType,
+            servings: 1,
+            foodName: '今天午餐',
+            calories: 100,
+            protein: 10,
+          ),
+        ];
+      }
+      if (date == '2026-07-19' && mealType == 'breakfast') {
+        return [
+          MealItem(
+            recordId: 2,
+            foodId: 2,
+            date: date,
+            mealType: mealType,
+            servings: 2,
+            foodName: '昨日早餐',
+            calories: 60,
+            protein: 4,
+          ),
+        ];
+      }
+      return [];
+    }
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: HomePage(
+          todayOverride: DateTime(2026, 7, 20),
+          mealItemsLoader: loader,
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.text('今天'), findsOneWidget);
+    expect(find.text('2026年7月20日'), findsOneWidget);
+    expect(find.text('🔥 100 / 1600 kcal'), findsOneWidget);
+    expect(find.text('🥩 10 / 100 g'), findsOneWidget);
+    final nextButton = tester.widget<IconButton>(
+      find.byKey(const Key('nextDayButton')),
+    );
+    expect(nextButton.onPressed, isNull);
+
+    await tester.tap(find.byKey(const Key('previousDayButton')));
+    await tester.pumpAndSettle();
+
+    expect(find.text('2026年7月19日 星期日'), findsOneWidget);
+    expect(find.text('昨日早餐'), findsOneWidget);
+    expect(find.text('🔥 120 / 1600 kcal'), findsOneWidget);
+    expect(find.text('🥩 8 / 100 g'), findsOneWidget);
+    expect(find.text('今天午餐'), findsNothing);
+    expect(find.text('此日已封存'), findsOneWidget);
+    expect(find.text('新增餐點'), findsNothing);
+    expect(find.byTooltip('刪除餐點'), findsNothing);
+  });
+
+  testWidgets('Past dates are locked, can unlock, and relock after switching', (
+    WidgetTester tester,
+  ) async {
+    await tester.pumpWidget(
+      MaterialApp(
+        home: HomePage(
+          todayOverride: DateTime(2026, 7, 20),
+          mealItemsLoader: (_, _) async => [],
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.byKey(const Key('previousDayButton')));
+    await tester.pumpAndSettle();
+
+    expect(find.text('此日已封存'), findsOneWidget);
+    expect(find.text('新增餐點'), findsNothing);
+    expect(find.byKey(const Key('unlockHistoricalButton')), findsOneWidget);
+
+    await tester.tap(find.byKey(const Key('unlockHistoricalButton')));
+    await tester.pumpAndSettle();
+    expect(find.text('解鎖歷史日期？'), findsOneWidget);
+    await tester.tap(find.text('確認解鎖'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('此日已解鎖，可修正餐點'), findsOneWidget);
+    expect(find.text('新增餐點'), findsWidgets);
+
+    await tester.tap(find.byKey(const Key('nextDayButton')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const Key('previousDayButton')));
+    await tester.pumpAndSettle();
+
+    expect(find.text('此日已封存'), findsOneWidget);
+    expect(find.text('新增餐點'), findsNothing);
   });
 }

@@ -9,7 +9,7 @@ enum FoodRemovalResult { deleted, archived, notFound }
 
 class DatabaseHelper {
   static final DatabaseHelper instance = DatabaseHelper._();
-  static const databaseVersion = 3;
+  static const databaseVersion = 4;
 
   final DatabaseFactory? _databaseFactoryOverride;
   final String? _databasePathOverride;
@@ -85,6 +85,56 @@ class DatabaseHelper {
         'ADD COLUMN is_archived INTEGER NOT NULL DEFAULT 0',
       );
     }
+    if (oldVersion >= 2 && oldVersion < 4) {
+      await _addMealRecordSnapshots(db);
+    }
+  }
+
+  Future<void> _addMealRecordSnapshots(Database db) async {
+    await db.execute(
+      "ALTER TABLE meal_records ADD COLUMN food_name_snapshot "
+      "TEXT NOT NULL DEFAULT '未知食物'",
+    );
+    await db.execute(
+      'ALTER TABLE meal_records ADD COLUMN calories_snapshot '
+      'REAL NOT NULL DEFAULT 0',
+    );
+    await db.execute(
+      'ALTER TABLE meal_records ADD COLUMN protein_snapshot '
+      'REAL NOT NULL DEFAULT 0',
+    );
+    await db.execute(
+      'ALTER TABLE meal_records ADD COLUMN carbs_snapshot '
+      'REAL NOT NULL DEFAULT 0',
+    );
+    await db.execute(
+      'ALTER TABLE meal_records ADD COLUMN fat_snapshot '
+      'REAL NOT NULL DEFAULT 0',
+    );
+    await db.execute('''
+      UPDATE meal_records
+      SET
+        food_name_snapshot = COALESCE(
+          (SELECT name FROM foods WHERE foods.id = meal_records.food_id),
+          '未知食物'
+        ),
+        calories_snapshot = COALESCE(
+          (SELECT calories FROM foods WHERE foods.id = meal_records.food_id),
+          0
+        ),
+        protein_snapshot = COALESCE(
+          (SELECT protein FROM foods WHERE foods.id = meal_records.food_id),
+          0
+        ),
+        carbs_snapshot = COALESCE(
+          (SELECT carbs FROM foods WHERE foods.id = meal_records.food_id),
+          0
+        ),
+        fat_snapshot = COALESCE(
+          (SELECT fat FROM foods WHERE foods.id = meal_records.food_id),
+          0
+        )
+    ''');
   }
 
   Future<void> _createMealRecordsTable(Database db) async {
@@ -95,6 +145,11 @@ class DatabaseHelper {
         meal_type TEXT NOT NULL,
         food_id INTEGER NOT NULL,
         servings REAL NOT NULL DEFAULT 1,
+        food_name_snapshot TEXT NOT NULL DEFAULT '未知食物',
+        calories_snapshot REAL NOT NULL DEFAULT 0,
+        protein_snapshot REAL NOT NULL DEFAULT 0,
+        carbs_snapshot REAL NOT NULL DEFAULT 0,
+        fat_snapshot REAL NOT NULL DEFAULT 0,
         FOREIGN KEY (food_id) REFERENCES foods (id)
       )
     ''');
@@ -232,12 +287,12 @@ class DatabaseHelper {
       meal_records.meal_type,
       meal_records.food_id,
       meal_records.servings,
-      foods.name AS food_name,
-      foods.calories,
-      foods.protein
+      meal_records.food_name_snapshot AS food_name,
+      meal_records.calories_snapshot AS calories,
+      meal_records.protein_snapshot AS protein,
+      meal_records.carbs_snapshot AS carbs,
+      meal_records.fat_snapshot AS fat
     FROM meal_records
-    INNER JOIN foods
-      ON meal_records.food_id = foods.id
     WHERE meal_records.date = ?
       AND meal_records.meal_type = ?
     ORDER BY meal_records.id ASC

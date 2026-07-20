@@ -4,6 +4,11 @@ class MealRecord {
   final String mealType;
   final int foodId;
   final double servings;
+  final String foodNameSnapshot;
+  final double caloriesSnapshot;
+  final double proteinSnapshot;
+  final double carbsSnapshot;
+  final double fatSnapshot;
 
   MealRecord({
     this.id,
@@ -11,6 +16,11 @@ class MealRecord {
     required this.mealType,
     required this.foodId,
     required this.servings,
+    required this.foodNameSnapshot,
+    required this.caloriesSnapshot,
+    required this.proteinSnapshot,
+    required this.carbsSnapshot,
+    required this.fatSnapshot,
   });
 
   Map<String, dynamic> toMap() {
@@ -20,6 +30,11 @@ class MealRecord {
       'meal_type': mealType,
       'food_id': foodId,
       'servings': servings,
+      'food_name_snapshot': foodNameSnapshot,
+      'calories_snapshot': caloriesSnapshot,
+      'protein_snapshot': proteinSnapshot,
+      'carbs_snapshot': carbsSnapshot,
+      'fat_snapshot': fatSnapshot,
     };
   }
 
@@ -30,6 +45,11 @@ class MealRecord {
       mealType: map['meal_type'] as String,
       foodId: map['food_id'] as int,
       servings: (map['servings'] as num).toDouble(),
+      foodNameSnapshot: map['food_name_snapshot'] as String,
+      caloriesSnapshot: (map['calories_snapshot'] as num).toDouble(),
+      proteinSnapshot: (map['protein_snapshot'] as num).toDouble(),
+      carbsSnapshot: (map['carbs_snapshot'] as num).toDouble(),
+      fatSnapshot: (map['fat_snapshot'] as num).toDouble(),
     );
   }
 }

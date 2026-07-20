@@ -42,6 +42,11 @@ void main() {
         mealType: 'lunch',
         foodId: foodId,
         servings: 1,
+        foodNameSnapshot: '已使用食物',
+        caloriesSnapshot: 200,
+        proteinSnapshot: 10,
+        carbsSnapshot: 12,
+        fatSnapshot: 8,
       ),
     );
 
@@ -67,7 +72,7 @@ void main() {
     expect(historicalItems.single.foodName, '已使用食物');
   });
 
-  test('version 2 database migrates without losing food or meals', () async {
+  test('version 2 database migrates and backfills meal snapshots', () async {
     final tempDirectory = await Directory.systemTemp.createTemp(
       'nutrilog_migration_',
     );
@@ -106,12 +111,20 @@ void main() {
       'name': '舊版食物',
       'calories': 150,
       'protein': 7.5,
+      'carbs': 20,
+      'fat': 4,
     });
     await version2Database.insert('meal_records', {
       'date': '2026-07-13',
       'meal_type': 'breakfast',
       'food_id': foodId,
       'servings': 1.5,
+    });
+    await version2Database.insert('meal_records', {
+      'date': '2026-07-13',
+      'meal_type': 'snack',
+      'food_id': 999,
+      'servings': 1,
     });
     await version2Database.close();
 
@@ -122,12 +135,79 @@ void main() {
     final db = await migratedDatabase.database;
 
     expect(await db.getVersion(), DatabaseHelper.databaseVersion);
-    final columns = await db.rawQuery('PRAGMA table_info(foods)');
-    expect(columns.map((column) => column['name']), contains('is_archived'));
+    final foodColumns = await db.rawQuery('PRAGMA table_info(foods)');
+    expect(
+      foodColumns.map((column) => column['name']),
+      contains('is_archived'),
+    );
+    final mealColumns = await db.rawQuery('PRAGMA table_info(meal_records)');
+    expect(
+      mealColumns.map((column) => column['name']),
+      containsAll([
+        'food_name_snapshot',
+        'calories_snapshot',
+        'protein_snapshot',
+        'carbs_snapshot',
+        'fat_snapshot',
+      ]),
+    );
     expect(await migratedDatabase.getFoods(), hasLength(1));
-    expect(await migratedDatabase.getAllMealRecords(), hasLength(1));
+    expect(await migratedDatabase.getAllMealRecords(), hasLength(2));
+
+    final breakfast = await migratedDatabase.getMealItemsByDateAndMealType(
+      '2026-07-13',
+      'breakfast',
+    );
+    expect(breakfast.single.foodName, '舊版食物');
+    expect(breakfast.single.calories, 150);
+    expect(breakfast.single.protein, 7.5);
+    expect(breakfast.single.carbs, 20);
+    expect(breakfast.single.fat, 4);
+
+    final orphan = await migratedDatabase.getMealItemsByDateAndMealType(
+      '2026-07-13',
+      'snack',
+    );
+    expect(orphan.single.foodName, '未知食物');
+    expect(orphan.single.calories, 0);
+    expect(orphan.single.protein, 0);
 
     await migratedDatabase.close();
     await tempDirectory.delete(recursive: true);
+  });
+
+  test('meal snapshot does not change after its food is modified', () async {
+    final foodId = await databaseHelper.insertFood(
+      Food(name: '原始食物', calories: 100, protein: 8, carbs: 12, fat: 3),
+    );
+    await databaseHelper.insertMealRecord(
+      MealRecord(
+        date: '2026-07-20',
+        mealType: 'dinner',
+        foodId: foodId,
+        servings: 2,
+        foodNameSnapshot: '原始食物',
+        caloriesSnapshot: 100,
+        proteinSnapshot: 8,
+        carbsSnapshot: 12,
+        fatSnapshot: 3,
+      ),
+    );
+
+    final db = await databaseHelper.database;
+    await db.update(
+      'foods',
+      {'name': '修改後食物', 'calories': 999, 'protein': 99},
+      where: 'id = ?',
+      whereArgs: [foodId],
+    );
+
+    final items = await databaseHelper.getMealItemsByDateAndMealType(
+      '2026-07-20',
+      'dinner',
+    );
+    expect(items.single.foodName, '原始食物');
+    expect(items.single.totalCalories, 200);
+    expect(items.single.totalProtein, 16);
   });
 }

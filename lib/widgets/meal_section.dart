@@ -5,6 +5,8 @@ import '../models/meal_item.dart';
 class MealSection extends StatelessWidget {
   final String title;
   final String mealType;
+  final String date;
+  final bool canEdit;
   final List<MealItem> items;
   final Future<void> Function() onMealAdded;
   final Future<void> Function(MealItem item) onDelete;
@@ -13,6 +15,8 @@ class MealSection extends StatelessWidget {
     super.key,
     required this.title,
     required this.mealType,
+    required this.date,
+    required this.canEdit,
     required this.items,
     required this.onMealAdded,
     required this.onDelete,
@@ -73,29 +77,33 @@ class MealSection extends StatelessWidget {
                     '${_formatNumber(item.totalCalories)} kcal • '
                     '${_formatNumber(item.totalProtein)} g',
                   ),
-                  trailing: IconButton(
-                    onPressed: () => _confirmDelete(context, item),
-                    tooltip: '刪除餐點',
-                    icon: const Icon(Icons.delete_outline),
-                  ),
+                  trailing: canEdit
+                      ? IconButton(
+                          onPressed: () => _confirmDelete(context, item),
+                          tooltip: '刪除餐點',
+                          icon: const Icon(Icons.delete_outline),
+                        )
+                      : null,
                 ),
               ),
-            OutlinedButton.icon(
-              onPressed: () async {
-                final added = await Navigator.push<bool>(
-                  context,
-                  MaterialPageRoute(
-                    builder: (context) => FoodDatabasePage(mealType: mealType),
-                  ),
-                );
+            if (canEdit)
+              OutlinedButton.icon(
+                onPressed: () async {
+                  final added = await Navigator.push<bool>(
+                    context,
+                    MaterialPageRoute(
+                      builder: (context) =>
+                          FoodDatabasePage(mealType: mealType, date: date),
+                    ),
+                  );
 
-                if (added == true) {
-                  await onMealAdded();
-                }
-              },
-              icon: const Icon(Icons.add),
-              label: const Text('新增餐點'),
-            ),
+                  if (added == true) {
+                    await onMealAdded();
+                  }
+                },
+                icon: const Icon(Icons.add),
+                label: const Text('新增餐點'),
+              ),
           ],
         ),
       ),

@@ -7,6 +7,7 @@ import 'add_food_page.dart';
 
 class FoodDatabasePage extends StatefulWidget {
   final String mealType;
+  final String date;
   final Future<List<Food>> Function()? loadFoods;
   final Future<int> Function(Food food)? insertFood;
   final Future<int> Function(MealRecord mealRecord)? insertMealRecord;
@@ -16,6 +17,7 @@ class FoodDatabasePage extends StatefulWidget {
   const FoodDatabasePage({
     super.key,
     required this.mealType,
+    required this.date,
     this.loadFoods,
     this.insertFood,
     this.insertMealRecord,
@@ -100,16 +102,22 @@ class _FoodDatabasePageState extends State<FoodDatabasePage> {
   }
 
   Future<void> _saveMealRecord({
-    required int foodId,
+    required Food food,
     required double servings,
   }) async {
-    final today = DateTime.now().toIso8601String().substring(0, 10);
+    final foodId = food.id;
+    if (foodId == null) return;
     await _createMealRecord(
       MealRecord(
-        date: today,
+        date: widget.date,
         mealType: widget.mealType,
         foodId: foodId,
         servings: servings,
+        foodNameSnapshot: food.name,
+        caloriesSnapshot: food.calories.toDouble(),
+        proteinSnapshot: food.protein,
+        carbsSnapshot: food.carbs,
+        fatSnapshot: food.fat,
       ),
     );
   }
@@ -121,7 +129,7 @@ class _FoodDatabasePageState extends State<FoodDatabasePage> {
     final servings = await _askForServings(food);
     if (servings == null) return;
 
-    await _saveMealRecord(foodId: foodId, servings: servings);
+    await _saveMealRecord(food: food, servings: servings);
     if (!mounted) return;
     Navigator.pop(context, true);
   }
@@ -136,7 +144,17 @@ class _FoodDatabasePageState extends State<FoodDatabasePage> {
     if (result == null) return;
 
     final foodId = await _createFood(result.food);
-    await _saveMealRecord(foodId: foodId, servings: result.servings);
+    final createdFood = Food(
+      id: foodId,
+      name: result.food.name,
+      calories: result.food.calories,
+      protein: result.food.protein,
+      carbs: result.food.carbs,
+      fat: result.food.fat,
+      favorite: result.food.favorite,
+      isArchived: result.food.isArchived,
+    );
+    await _saveMealRecord(food: createdFood, servings: result.servings);
     if (!mounted) return;
     Navigator.pop(context, true);
   }

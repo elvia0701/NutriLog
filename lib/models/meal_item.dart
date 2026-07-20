@@ -5,8 +5,10 @@ class MealItem {
   final String mealType;
   final double servings;
   final String foodName;
-  final int calories;
+  final double calories;
   final double protein;
+  final double carbs;
+  final double fat;
 
   MealItem({
     required this.recordId,
@@ -17,6 +19,8 @@ class MealItem {
     required this.foodName,
     required this.calories,
     required this.protein,
+    this.carbs = 0,
+    this.fat = 0,
   });
 
   factory MealItem.fromMap(Map<String, dynamic> map) {
@@ -27,12 +31,18 @@ class MealItem {
       mealType: map['meal_type'] as String,
       servings: (map['servings'] as num).toDouble(),
       foodName: map['food_name'] as String,
-      calories: map['calories'] as int,
+      calories: (map['calories'] as num).toDouble(),
       protein: (map['protein'] as num).toDouble(),
+      carbs: (map['carbs'] as num).toDouble(),
+      fat: (map['fat'] as num).toDouble(),
     );
   }
 
   double get totalCalories => calories * servings;
 
   double get totalProtein => protein * servings;
+
+  double get totalCarbs => carbs * servings;
+
+  double get totalFat => fat * servings;
 }
