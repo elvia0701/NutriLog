@@ -4,12 +4,13 @@ import 'package:sqflite/sqflite.dart';
 import '../models/food.dart';
 import '../models/meal_record.dart';
 import '../models/meal_item.dart';
+import '../models/weight_record.dart';
 
 enum FoodRemovalResult { deleted, archived, notFound }
 
 class DatabaseHelper {
   static final DatabaseHelper instance = DatabaseHelper._();
-  static const databaseVersion = 4;
+  static const databaseVersion = 5;
 
   final DatabaseFactory? _databaseFactoryOverride;
   final String? _databasePathOverride;
@@ -73,6 +74,7 @@ class DatabaseHelper {
     ''');
 
     await _createMealRecordsTable(db);
+    await _createWeightRecordsTable(db);
   }
 
   Future<void> _onUpgrade(Database db, int oldVersion, int newVersion) async {
@@ -87,6 +89,9 @@ class DatabaseHelper {
     }
     if (oldVersion >= 2 && oldVersion < 4) {
       await _addMealRecordSnapshots(db);
+    }
+    if (oldVersion < 5) {
+      await _createWeightRecordsTable(db);
     }
   }
 
@@ -151,6 +156,16 @@ class DatabaseHelper {
         carbs_snapshot REAL NOT NULL DEFAULT 0,
         fat_snapshot REAL NOT NULL DEFAULT 0,
         FOREIGN KEY (food_id) REFERENCES foods (id)
+      )
+    ''');
+  }
+
+  Future<void> _createWeightRecordsTable(Database db) async {
+    await db.execute('''
+      CREATE TABLE IF NOT EXISTS weight_records (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        date TEXT NOT NULL UNIQUE,
+        weight REAL NOT NULL CHECK (weight >= 20 AND weight <= 500)
       )
     ''');
   }
@@ -307,5 +322,62 @@ class DatabaseHelper {
     final db = await database;
 
     return db.delete('meal_records', where: 'id = ?', whereArgs: [id]);
+  }
+
+  // --------------------
+  // Weight records
+  // --------------------
+
+  Future<void> saveWeightRecord(String date, double weight) async {
+    final hasAtMostOneDecimal =
+        ((weight * 10) - (weight * 10).round()).abs() < 0.0000001;
+    if (!weight.isFinite ||
+        weight < 20 ||
+        weight > 500 ||
+        !hasAtMostOneDecimal) {
+      throw ArgumentError.value(
+        weight,
+        'weight',
+        'Weight must be 20–500 kg with at most one decimal place.',
+      );
+    }
+    final db = await database;
+    await db.transaction((transaction) async {
+      final updated = await transaction.update(
+        'weight_records',
+        {'weight': weight},
+        where: 'date = ?',
+        whereArgs: [date],
+      );
+      if (updated == 0) {
+        await transaction.insert('weight_records', {
+          'date': date,
+          'weight': weight,
+        });
+      }
+    });
+  }
+
+  Future<WeightRecord?> getWeightRecordByDate(String date) async {
+    final db = await database;
+    final maps = await db.query(
+      'weight_records',
+      where: 'date = ?',
+      whereArgs: [date],
+      limit: 1,
+    );
+    if (maps.isEmpty) return null;
+    return WeightRecord.fromMap(maps.single);
+  }
+
+  Future<List<WeightRecord>> getWeightRecords() async {
+    final db = await database;
+    final maps = await db.query('weight_records', orderBy: 'date DESC');
+    return maps.map(WeightRecord.fromMap).toList();
+  }
+
+  Future<int> deleteWeightRecord(String date) async {
+    final db = await database;
+    return db.delete('weight_records', where: 'date = ?', whereArgs: [date]);
   }
 }

@@ -153,6 +153,10 @@ void main() {
     );
     expect(await migratedDatabase.getFoods(), hasLength(1));
     expect(await migratedDatabase.getAllMealRecords(), hasLength(2));
+    final weightTable = await db.rawQuery(
+      "SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'weight_records'",
+    );
+    expect(weightTable, hasLength(1));
 
     final breakfast = await migratedDatabase.getMealItemsByDateAndMealType(
       '2026-07-13',
@@ -171,6 +175,83 @@ void main() {
     expect(orphan.single.foodName, '未知食物');
     expect(orphan.single.calories, 0);
     expect(orphan.single.protein, 0);
+
+    await migratedDatabase.close();
+    await tempDirectory.delete(recursive: true);
+  });
+
+  test('version 4 migration preserves existing food and meal data', () async {
+    final tempDirectory = await Directory.systemTemp.createTemp(
+      'nutrilog_weight_migration_',
+    );
+    final databasePath = path.join(tempDirectory.path, 'health_app.db');
+    final version4Database = await databaseFactoryFfi.openDatabase(
+      databasePath,
+      options: OpenDatabaseOptions(
+        version: 4,
+        onCreate: (db, version) async {
+          await db.execute('''
+            CREATE TABLE foods (
+              id INTEGER PRIMARY KEY AUTOINCREMENT,
+              name TEXT NOT NULL,
+              calories INTEGER NOT NULL,
+              protein REAL NOT NULL,
+              carbs REAL NOT NULL DEFAULT 0,
+              fat REAL NOT NULL DEFAULT 0,
+              favorite INTEGER NOT NULL DEFAULT 0,
+              is_archived INTEGER NOT NULL DEFAULT 0
+            )
+          ''');
+          await db.execute('''
+            CREATE TABLE meal_records (
+              id INTEGER PRIMARY KEY AUTOINCREMENT,
+              date TEXT NOT NULL,
+              meal_type TEXT NOT NULL,
+              food_id INTEGER NOT NULL,
+              servings REAL NOT NULL DEFAULT 1,
+              food_name_snapshot TEXT NOT NULL DEFAULT '未知食物',
+              calories_snapshot REAL NOT NULL DEFAULT 0,
+              protein_snapshot REAL NOT NULL DEFAULT 0,
+              carbs_snapshot REAL NOT NULL DEFAULT 0,
+              fat_snapshot REAL NOT NULL DEFAULT 0
+            )
+          ''');
+        },
+      ),
+    );
+    final foodId = await version4Database.insert('foods', {
+      'name': '升版前食物',
+      'calories': 88,
+      'protein': 6,
+    });
+    await version4Database.insert('meal_records', {
+      'date': '2026-07-19',
+      'meal_type': 'breakfast',
+      'food_id': foodId,
+      'servings': 1,
+      'food_name_snapshot': '升版前食物',
+      'calories_snapshot': 88,
+      'protein_snapshot': 6,
+    });
+    await version4Database.close();
+
+    final migratedDatabase = DatabaseHelper.forTesting(
+      databaseFactoryFfi,
+      databasePath: databasePath,
+    );
+    final db = await migratedDatabase.database;
+
+    expect(await db.getVersion(), 5);
+    expect((await migratedDatabase.getFoods()).single.name, '升版前食物');
+    expect(
+      (await migratedDatabase.getAllMealRecords()).single.foodNameSnapshot,
+      '升版前食物',
+    );
+    await migratedDatabase.saveWeightRecord('2026-07-20', 90.5);
+    expect(
+      (await migratedDatabase.getWeightRecordByDate('2026-07-20'))?.weight,
+      90.5,
+    );
 
     await migratedDatabase.close();
     await tempDirectory.delete(recursive: true);
@@ -209,5 +290,54 @@ void main() {
     expect(items.single.foodName, '原始食物');
     expect(items.single.totalCalories, 200);
     expect(items.single.totalProtein, 16);
+  });
+
+  test('saving weight again on the same date updates one record', () async {
+    await databaseHelper.saveWeightRecord('2026-07-20', 90);
+    final first = await databaseHelper.getWeightRecordByDate('2026-07-20');
+
+    await databaseHelper.saveWeightRecord('2026-07-20', 90.5);
+    final updated = await databaseHelper.getWeightRecordByDate('2026-07-20');
+    final records = await databaseHelper.getWeightRecords();
+
+    expect(first, isNotNull);
+    expect(updated?.id, first?.id);
+    expect(updated?.weight, 90.5);
+    expect(records, hasLength(1));
+  });
+
+  test('weights are independent by date and sorted newest first', () async {
+    await databaseHelper.saveWeightRecord('2026-07-18', 91.2);
+    await databaseHelper.saveWeightRecord('2026-07-20', 90.5);
+    await databaseHelper.saveWeightRecord('2026-07-19', 90.8);
+
+    expect(
+      (await databaseHelper.getWeightRecordByDate('2026-07-18'))?.weight,
+      91.2,
+    );
+    expect(
+      (await databaseHelper.getWeightRecordByDate('2026-07-20'))?.weight,
+      90.5,
+    );
+    expect(
+      (await databaseHelper.getWeightRecords()).map((record) => record.date),
+      ['2026-07-20', '2026-07-19', '2026-07-18'],
+    );
+  });
+
+  test('weight record can be deleted', () async {
+    await databaseHelper.saveWeightRecord('2026-07-20', 90);
+
+    expect(await databaseHelper.deleteWeightRecord('2026-07-20'), 1);
+    expect(await databaseHelper.getWeightRecordByDate('2026-07-20'), isNull);
+  });
+
+  test('database rejects out-of-range or over-precise weights', () async {
+    for (final invalidWeight in [0.0, -1.0, 19.9, 500.1, 501.0, 90.55]) {
+      expect(
+        databaseHelper.saveWeightRecord('2026-07-20', invalidWeight),
+        throwsArgumentError,
+      );
+    }
   });
 }

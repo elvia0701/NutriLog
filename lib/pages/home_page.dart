@@ -6,19 +6,30 @@ import '../widgets/dashboard_summary.dart';
 import '../widgets/meal_section.dart';
 import '../database/database_helper.dart';
 import '../models/meal_item.dart';
+import '../models/weight_record.dart';
 import '../utils/local_date.dart';
+import '../widgets/weight_entry_dialog.dart';
+import 'weight_history_page.dart';
 
 class HomePage extends StatefulWidget {
   final DateTime? todayOverride;
   final Future<List<MealItem>> Function(String date, String mealType)?
   mealItemsLoader;
   final Future<void> Function(int recordId)? mealRecordDeleter;
+  final Future<WeightRecord?> Function(String date)? weightLoader;
+  final Future<void> Function(String date, double weight)? weightSaver;
+  final Future<void> Function(String date)? weightDeleter;
+  final Future<List<WeightRecord>> Function()? weightHistoryLoader;
 
   const HomePage({
     super.key,
     this.todayOverride,
     this.mealItemsLoader,
     this.mealRecordDeleter,
+    this.weightLoader,
+    this.weightSaver,
+    this.weightDeleter,
+    this.weightHistoryLoader,
   });
 
   @override
@@ -34,10 +45,11 @@ class _HomePageState extends State<HomePage> {
   List<MealItem> snackItems = [];
   late DateTime selectedDate;
   bool historicalDateUnlocked = false;
+  WeightRecord? selectedWeight;
 
   DateTime get today => localDateOnly(widget.todayOverride ?? DateTime.now());
   bool get isViewingToday => isSameLocalDate(selectedDate, today);
-  bool get canEditMeals => isViewingToday || historicalDateUnlocked;
+  bool get canEditRecords => isViewingToday || historicalDateUnlocked;
 
   List<MealItem> get allMealItems => [
     ...breakfastItems,
@@ -77,21 +89,23 @@ class _HomePageState extends State<HomePage> {
 
   Future<void> loadMealItems() async {
     final requestedDate = databaseDate(selectedDate);
-    final results = await Future.wait([
+    final results = await Future.wait<Object?>([
       _loadMealType(requestedDate, 'breakfast'),
       _loadMealType(requestedDate, 'lunch'),
       _loadMealType(requestedDate, 'dinner'),
       _loadMealType(requestedDate, 'snack'),
+      _loadWeight(requestedDate),
     ]);
 
     if (!mounted) return;
     if (requestedDate != databaseDate(selectedDate)) return;
 
     setState(() {
-      breakfastItems = results[0];
-      lunchItems = results[1];
-      dinnerItems = results[2];
-      snackItems = results[3];
+      breakfastItems = results[0] as List<MealItem>;
+      lunchItems = results[1] as List<MealItem>;
+      dinnerItems = results[2] as List<MealItem>;
+      snackItems = results[3] as List<MealItem>;
+      selectedWeight = results[4] as WeightRecord?;
     });
   }
 
@@ -104,6 +118,13 @@ class _HomePageState extends State<HomePage> {
     );
   }
 
+  Future<WeightRecord?> _loadWeight(String date) {
+    final loader = widget.weightLoader;
+    if (loader != null) return loader(date);
+    if (widget.mealItemsLoader != null) return Future.value();
+    return DatabaseHelper.instance.getWeightRecordByDate(date);
+  }
+
   Future<void> deleteMealItem(MealItem item) async {
     final deleter = widget.mealRecordDeleter;
     if (deleter != null) {
@@ -112,6 +133,66 @@ class _HomePageState extends State<HomePage> {
       await DatabaseHelper.instance.deleteMealRecord(item.recordId);
     }
     await loadMealItems();
+  }
+
+  Future<void> _editWeight() async {
+    if (!canEditRecords) return;
+    final weight = await showDialog<double>(
+      context: context,
+      builder: (context) =>
+          WeightEntryDialog(initialWeight: selectedWeight?.weight),
+    );
+    if (weight == null) return;
+
+    final date = databaseDate(selectedDate);
+    final saver = widget.weightSaver;
+    if (saver != null) {
+      await saver(date, weight);
+    } else {
+      await DatabaseHelper.instance.saveWeightRecord(date, weight);
+    }
+    await loadMealItems();
+  }
+
+  Future<void> _deleteWeight() async {
+    if (!canEditRecords || selectedWeight == null) return;
+    final date = databaseDate(selectedDate);
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('刪除體重紀錄？'),
+        content: Text('確定要刪除 $date 的體重紀錄嗎？'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('取消'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(context, true),
+            child: const Text('刪除'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true) return;
+
+    final deleter = widget.weightDeleter;
+    if (deleter != null) {
+      await deleter(date);
+    } else {
+      await DatabaseHelper.instance.deleteWeightRecord(date);
+    }
+    await loadMealItems();
+  }
+
+  Future<void> _openWeightHistory() async {
+    await Navigator.push<void>(
+      context,
+      MaterialPageRoute(
+        builder: (context) =>
+            WeightHistoryPage(loadRecords: widget.weightHistoryLoader),
+      ),
+    );
   }
 
   Future<void> _changeDate(DateTime value) async {
@@ -124,6 +205,7 @@ class _HomePageState extends State<HomePage> {
       lunchItems = [];
       dinnerItems = [];
       snackItems = [];
+      selectedWeight = null;
     });
     await loadMealItems();
   }
@@ -144,7 +226,9 @@ class _HomePageState extends State<HomePage> {
       context: context,
       builder: (context) => AlertDialog(
         title: const Text('解鎖歷史日期？'),
-        content: Text('解鎖 ${fullLocalDate(selectedDate)} 後，可在本次查看期間補記或刪除餐點。'),
+        content: Text(
+          '解鎖 ${fullLocalDate(selectedDate)} 後，可在本次查看期間補記、修改或刪除餐點與體重。',
+        ),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(context, false),
@@ -231,7 +315,7 @@ class _HomePageState extends State<HomePage> {
             const Icon(Icons.lock_outline),
             const SizedBox(width: 8),
             Expanded(
-              child: Text(historicalDateUnlocked ? '此日已解鎖，可修正餐點' : '此日已封存'),
+              child: Text(historicalDateUnlocked ? '此日已解鎖，可修正餐點與體重' : '此日已封存'),
             ),
             if (!historicalDateUnlocked)
               TextButton(
@@ -268,6 +352,11 @@ class _HomePageState extends State<HomePage> {
               DashboardSummary(
                 totalCalories: totalCalories,
                 totalProtein: totalProtein,
+                weight: selectedWeight?.weight,
+                canEditWeight: canEditRecords,
+                onEditWeight: _editWeight,
+                onDeleteWeight: _deleteWeight,
+                onOpenWeightHistory: _openWeightHistory,
               ),
 
               const SizedBox(height: 24),
@@ -276,7 +365,7 @@ class _HomePageState extends State<HomePage> {
                 title: '早餐',
                 mealType: 'breakfast',
                 date: databaseDate(selectedDate),
-                canEdit: canEditMeals,
+                canEdit: canEditRecords,
                 items: breakfastItems,
                 onMealAdded: loadMealItems,
                 onDelete: deleteMealItem,
@@ -285,7 +374,7 @@ class _HomePageState extends State<HomePage> {
                 title: '午餐',
                 mealType: 'lunch',
                 date: databaseDate(selectedDate),
-                canEdit: canEditMeals,
+                canEdit: canEditRecords,
                 items: lunchItems,
                 onMealAdded: loadMealItems,
                 onDelete: deleteMealItem,
@@ -295,7 +384,7 @@ class _HomePageState extends State<HomePage> {
                 title: '晚餐',
                 mealType: 'dinner',
                 date: databaseDate(selectedDate),
-                canEdit: canEditMeals,
+                canEdit: canEditRecords,
                 items: dinnerItems,
                 onMealAdded: loadMealItems,
                 onDelete: deleteMealItem,
@@ -305,7 +394,7 @@ class _HomePageState extends State<HomePage> {
                 title: '點心',
                 mealType: 'snack',
                 date: databaseDate(selectedDate),
-                canEdit: canEditMeals,
+                canEdit: canEditRecords,
                 items: snackItems,
                 onMealAdded: loadMealItems,
                 onDelete: deleteMealItem,

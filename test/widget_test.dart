@@ -13,10 +13,13 @@ import 'package:nutrilog/models/food.dart';
 import 'package:nutrilog/pages/add_food_page.dart';
 import 'package:nutrilog/models/meal_item.dart';
 import 'package:nutrilog/models/meal_record.dart';
+import 'package:nutrilog/models/weight_record.dart';
 import 'package:nutrilog/pages/food_database_page.dart';
 import 'package:nutrilog/pages/home_page.dart';
+import 'package:nutrilog/pages/weight_history_page.dart';
 import 'package:nutrilog/widgets/dashboard_summary.dart';
 import 'package:nutrilog/widgets/meal_section.dart';
+import 'package:nutrilog/widgets/weight_entry_dialog.dart';
 
 Widget buildPageLauncher(Widget page) {
   return MaterialApp(
@@ -512,7 +515,7 @@ void main() {
     await tester.tap(find.text('確認解鎖'));
     await tester.pumpAndSettle();
 
-    expect(find.text('此日已解鎖，可修正餐點'), findsOneWidget);
+    expect(find.text('此日已解鎖，可修正餐點與體重'), findsOneWidget);
     expect(find.text('新增餐點'), findsWidgets);
 
     await tester.tap(find.byKey(const Key('nextDayButton')));
@@ -522,5 +525,194 @@ void main() {
 
     expect(find.text('此日已封存'), findsOneWidget);
     expect(find.text('新增餐點'), findsNothing);
+  });
+
+  testWidgets('Weight input validates blank, invalid, range, and precision', (
+    WidgetTester tester,
+  ) async {
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Builder(
+          builder: (context) => Scaffold(
+            body: ElevatedButton(
+              onPressed: () => showDialog<double>(
+                context: context,
+                builder: (_) => const WeightEntryDialog(),
+              ),
+              child: const Text('開啟體重輸入'),
+            ),
+          ),
+        ),
+      ),
+    );
+    await tester.tap(find.text('開啟體重輸入'));
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.byKey(const Key('saveWeightButton')));
+    await tester.pump();
+    expect(find.text('請輸入體重'), findsOneWidget);
+
+    final invalidInputs = {
+      'abc': '請輸入有效的數字',
+      '0': '體重必須介於 20–500 kg',
+      '-1': '體重必須介於 20–500 kg',
+      '501': '體重必須介於 20–500 kg',
+      '90.55': '體重最多只能有一位小數',
+    };
+    for (final entry in invalidInputs.entries) {
+      await tester.enterText(find.byKey(const Key('weightField')), entry.key);
+      await tester.tap(find.byKey(const Key('saveWeightButton')));
+      await tester.pump();
+      expect(find.byType(WeightEntryDialog), findsOneWidget);
+      expect(find.text(entry.value), findsOneWidget);
+    }
+
+    await tester.enterText(find.byKey(const Key('weightField')), '90.5');
+    await tester.tap(find.byKey(const Key('saveWeightButton')));
+    await tester.pumpAndSettle();
+    expect(find.byType(WeightEntryDialog), findsNothing);
+  });
+
+  testWidgets('Today weight can be added and edited with current value', (
+    WidgetTester tester,
+  ) async {
+    WeightRecord? storedWeight;
+    await tester.pumpWidget(
+      MaterialApp(
+        home: HomePage(
+          todayOverride: DateTime(2026, 7, 20),
+          mealItemsLoader: (_, _) async => [],
+          weightLoader: (_) async => storedWeight,
+          weightSaver: (date, weight) async {
+            storedWeight = WeightRecord(date: date, weight: weight);
+          },
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.text('⚖️ 體重：尚未記錄'), findsOneWidget);
+    expect(find.text('記錄體重'), findsOneWidget);
+    await tester.tap(find.byKey(const Key('editWeightButton')));
+    await tester.pumpAndSettle();
+    await tester.enterText(find.byKey(const Key('weightField')), '90.5');
+    await tester.tap(find.byKey(const Key('saveWeightButton')));
+    await tester.pumpAndSettle();
+
+    expect(storedWeight?.date, '2026-07-20');
+    expect(storedWeight?.weight, 90.5);
+    expect(find.text('⚖️ 體重：90.5 kg'), findsOneWidget);
+    expect(find.text('修改體重'), findsOneWidget);
+
+    await tester.tap(find.byKey(const Key('editWeightButton')));
+    await tester.pumpAndSettle();
+    final field = tester.widget<TextField>(
+      find.byKey(const Key('weightField')),
+    );
+    expect(field.controller?.text, '90.5');
+  });
+
+  testWidgets('Past weight is read-only until the date is unlocked', (
+    WidgetTester tester,
+  ) async {
+    await tester.pumpWidget(
+      MaterialApp(
+        home: HomePage(
+          todayOverride: DateTime(2026, 7, 20),
+          mealItemsLoader: (_, _) async => [],
+          weightLoader: (date) async => date == '2026-07-19'
+              ? const WeightRecord(date: '2026-07-19', weight: 91)
+              : null,
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const Key('previousDayButton')));
+    await tester.pumpAndSettle();
+
+    expect(find.text('⚖️ 體重：91 kg'), findsOneWidget);
+    expect(find.byKey(const Key('editWeightButton')), findsNothing);
+    expect(find.byKey(const Key('deleteWeightButton')), findsNothing);
+
+    await tester.tap(find.byKey(const Key('unlockHistoricalButton')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('確認解鎖'));
+    await tester.pumpAndSettle();
+
+    expect(find.byKey(const Key('editWeightButton')), findsOneWidget);
+    expect(find.byKey(const Key('deleteWeightButton')), findsOneWidget);
+  });
+
+  testWidgets('Weight deletion requires confirmation and supports cancel', (
+    WidgetTester tester,
+  ) async {
+    WeightRecord? storedWeight = const WeightRecord(
+      date: '2026-07-20',
+      weight: 90,
+    );
+    var deleteCalls = 0;
+    await tester.pumpWidget(
+      MaterialApp(
+        home: HomePage(
+          todayOverride: DateTime(2026, 7, 20),
+          mealItemsLoader: (_, _) async => [],
+          weightLoader: (_) async => storedWeight,
+          weightDeleter: (_) async {
+            deleteCalls += 1;
+            storedWeight = null;
+          },
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.byKey(const Key('deleteWeightButton')));
+    await tester.pumpAndSettle();
+    expect(find.text('刪除體重紀錄？'), findsOneWidget);
+    await tester.tap(find.text('取消'));
+    await tester.pumpAndSettle();
+    expect(deleteCalls, 0);
+    expect(find.text('⚖️ 體重：90 kg'), findsOneWidget);
+
+    await tester.tap(find.byKey(const Key('deleteWeightButton')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('刪除'));
+    await tester.pumpAndSettle();
+    expect(deleteCalls, 1);
+    expect(find.text('⚖️ 體重：尚未記錄'), findsOneWidget);
+  });
+
+  testWidgets('Weight history sorts newest first and has an empty state', (
+    WidgetTester tester,
+  ) async {
+    await tester.pumpWidget(
+      MaterialApp(
+        home: WeightHistoryPage(
+          loadRecords: () async => const [
+            WeightRecord(date: '2026-07-18', weight: 91.2),
+            WeightRecord(date: '2026-07-20', weight: 90.5),
+            WeightRecord(date: '2026-07-19', weight: 90.8),
+          ],
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    final newestTop = tester.getTopLeft(find.text('2026-07-20')).dy;
+    final middleTop = tester.getTopLeft(find.text('2026-07-19')).dy;
+    final oldestTop = tester.getTopLeft(find.text('2026-07-18')).dy;
+    expect(newestTop, lessThan(middleTop));
+    expect(middleTop, lessThan(oldestTop));
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: WeightHistoryPage(
+          key: const ValueKey('emptyWeightHistory'),
+          loadRecords: () async => [],
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+    expect(find.text('尚無體重紀錄'), findsOneWidget);
   });
 }
