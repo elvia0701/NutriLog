@@ -22,6 +22,55 @@ void main() {
     await databaseHelper.close();
   });
 
+  test(
+    'zero-valued food nutrients persist and produce valid meal totals',
+    () async {
+      final foodId = await databaseHelper.insertFood(
+        Food(name: '無營養素飲品', calories: 10, protein: 1, carbs: 2, fat: 3),
+      );
+      await databaseHelper.updateFood(
+        Food(
+          id: foodId,
+          name: '無營養素飲品',
+          calories: 0,
+          protein: 0,
+          carbs: 0,
+          fat: 0,
+        ),
+      );
+
+      final savedFood = (await databaseHelper.getFoods()).single;
+      expect(savedFood.id, foodId);
+      expect(savedFood.calories, 0);
+      expect(savedFood.protein, 0);
+      expect(savedFood.carbs, 0);
+      expect(savedFood.fat, 0);
+
+      await databaseHelper.insertMealRecord(
+        MealRecord(
+          date: '2026-07-21',
+          mealType: 'snack',
+          foodId: foodId,
+          servings: 2,
+          foodNameSnapshot: savedFood.name,
+          caloriesSnapshot: savedFood.calories.toDouble(),
+          proteinSnapshot: savedFood.protein,
+          carbsSnapshot: savedFood.carbs,
+          fatSnapshot: savedFood.fat,
+        ),
+      );
+
+      final meal = (await databaseHelper.getMealItemsByDateAndMealType(
+        '2026-07-21',
+        'snack',
+      )).single;
+      expect(meal.totalCalories, 0);
+      expect(meal.totalProtein, 0);
+      expect(meal.totalCarbs, 0);
+      expect(meal.totalFat, 0);
+    },
+  );
+
   test('unused food can be deleted', () async {
     final foodId = await databaseHelper.insertFood(
       Food(name: '未使用食物', calories: 100, protein: 5),

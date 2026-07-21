@@ -10,6 +10,7 @@ class FoodDatabasePage extends StatefulWidget {
   final String date;
   final Future<List<Food>> Function()? loadFoods;
   final Future<int> Function(Food food)? insertFood;
+  final Future<int> Function(Food food)? updateFood;
   final Future<int> Function(MealRecord mealRecord)? insertMealRecord;
   final Future<int> Function(int foodId)? getFoodReferenceCount;
   final Future<FoodRemovalResult> Function(int foodId)? removeFood;
@@ -20,6 +21,7 @@ class FoodDatabasePage extends StatefulWidget {
     required this.date,
     this.loadFoods,
     this.insertFood,
+    this.updateFood,
     this.insertMealRecord,
     this.getFoodReferenceCount,
     this.removeFood,
@@ -57,6 +59,11 @@ class _FoodDatabasePageState extends State<FoodDatabasePage> {
   Future<int> _createFood(Food food) {
     if (widget.insertFood != null) return widget.insertFood!(food);
     return DatabaseHelper.instance.insertFood(food);
+  }
+
+  Future<int> _updateFood(Food food) {
+    if (widget.updateFood != null) return widget.updateFood!(food);
+    return DatabaseHelper.instance.updateFood(food);
   }
 
   Future<int> _createMealRecord(MealRecord mealRecord) {
@@ -157,6 +164,16 @@ class _FoodDatabasePageState extends State<FoodDatabasePage> {
     await _saveMealRecord(food: createdFood, servings: result.servings);
     if (!mounted) return;
     Navigator.pop(context, true);
+  }
+
+  Future<void> _editFood(Food food) async {
+    final result = await Navigator.push<AddFoodResult>(
+      context,
+      MaterialPageRoute(builder: (context) => AddFoodPage(initialFood: food)),
+    );
+    if (result == null) return;
+    await _updateFood(result.food);
+    await _loadFoods();
   }
 
   Future<void> _confirmAndRemoveFood(Food food) async {
@@ -294,13 +311,26 @@ class _FoodDatabasePageState extends State<FoodDatabasePage> {
                             '每份 ${food.calories} kcal • '
                             '蛋白質 ${_formatNumber(food.protein)} g',
                           ),
-                          trailing: IconButton(
-                            key: ValueKey('delete_food_${food.id}'),
-                            onPressed: food.id == null
-                                ? null
-                                : () => _confirmAndRemoveFood(food),
-                            tooltip: '移除食物',
-                            icon: const Icon(Icons.delete_outline),
+                          trailing: Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              IconButton(
+                                key: ValueKey('edit_food_${food.id}'),
+                                onPressed: food.id == null
+                                    ? null
+                                    : () => _editFood(food),
+                                tooltip: '編輯食物',
+                                icon: const Icon(Icons.edit_outlined),
+                              ),
+                              IconButton(
+                                key: ValueKey('delete_food_${food.id}'),
+                                onPressed: food.id == null
+                                    ? null
+                                    : () => _confirmAndRemoveFood(food),
+                                tooltip: '移除食物',
+                                icon: const Icon(Icons.delete_outline),
+                              ),
+                            ],
                           ),
                           onTap: () => _selectFood(food),
                         );

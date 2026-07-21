@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'pages/home_page.dart';
+import 'theme/app_theme.dart';
 
 void main() {
   runApp(const NutriLogApp());
@@ -13,7 +14,7 @@ class NutriLogApp extends StatelessWidget {
     return MaterialApp(
       debugShowCheckedModeBanner: false,
       title: 'NutriLog',
-      theme: ThemeData(colorSchemeSeed: Colors.green, useMaterial3: true),
+      theme: AppTheme.light,
       home: const HomePage(),
     );
   }

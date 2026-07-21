@@ -21,6 +21,7 @@ import 'package:nutrilog/pages/home_page.dart';
 import 'package:nutrilog/pages/weight_history_page.dart';
 import 'package:nutrilog/pages/weight_trend_page.dart';
 import 'package:nutrilog/pages/nutrition_goal_page.dart';
+import 'package:nutrilog/theme/app_theme.dart';
 import 'package:nutrilog/widgets/dashboard_summary.dart';
 import 'package:nutrilog/widgets/meal_section.dart';
 import 'package:nutrilog/widgets/weight_entry_dialog.dart';
@@ -53,7 +54,159 @@ void main() {
     expect(find.text('食物名稱'), findsOneWidget);
     expect(find.text('熱量 kcal'), findsOneWidget);
     expect(find.text('蛋白質 g'), findsOneWidget);
+    expect(find.text('碳水 g'), findsOneWidget);
+    expect(find.text('脂肪 g'), findsOneWidget);
     expect(find.text('建立食物'), findsOneWidget);
+  });
+
+  testWidgets('Zero values are valid for every food nutrient', (
+    WidgetTester tester,
+  ) async {
+    Food? insertedFood;
+    final page = FoodDatabasePage(
+      mealType: 'snack',
+      date: '2026-07-21',
+      loadFoods: () async => [],
+      insertFood: (food) async {
+        insertedFood = food;
+        return 1;
+      },
+      insertMealRecord: (_) async => 1,
+    );
+    await tester.pumpWidget(buildPageLauncher(page));
+    await tester.tap(find.text('開啟頁面'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const Key('createNewFoodButton')));
+    await tester.pumpAndSettle();
+
+    await tester.enterText(find.byKey(const Key('foodNameField')), '無糖茶');
+    await tester.enterText(find.byKey(const Key('foodCaloriesField')), '0');
+    await tester.enterText(find.byKey(const Key('foodProteinField')), '0');
+    await tester.enterText(find.byKey(const Key('foodCarbsField')), '0');
+    await tester.enterText(find.byKey(const Key('foodFatField')), '0');
+    await tester.ensureVisible(find.byKey(const Key('saveFoodButton')));
+    await tester.tap(find.byKey(const Key('saveFoodButton')));
+    await tester.pumpAndSettle();
+
+    expect(insertedFood?.calories, 0);
+    expect(insertedFood?.protein, 0);
+    expect(insertedFood?.carbs, 0);
+    expect(insertedFood?.fat, 0);
+  });
+
+  testWidgets('Food nutrients reject negative, blank, and non-numeric input', (
+    WidgetTester tester,
+  ) async {
+    await tester.pumpWidget(const MaterialApp(home: AddFoodPage()));
+    await tester.enterText(find.byKey(const Key('foodNameField')), '   ');
+    await tester.enterText(find.byKey(const Key('foodCaloriesField')), '-1');
+    await tester.enterText(find.byKey(const Key('foodProteinField')), '-0.1');
+    await tester.enterText(find.byKey(const Key('foodCarbsField')), '');
+    await tester.enterText(find.byKey(const Key('foodFatField')), 'abc');
+    await tester.ensureVisible(find.byKey(const Key('saveFoodButton')));
+    await tester.tap(find.byKey(const Key('saveFoodButton')));
+    await tester.pump();
+
+    expect(find.text('請輸入食物名稱'), findsOneWidget);
+    expect(find.text('熱量不可小於 0'), findsOneWidget);
+    expect(find.text('蛋白質不可小於 0'), findsOneWidget);
+    expect(find.text('請輸入碳水'), findsOneWidget);
+    expect(find.text('脂肪必須是數字'), findsOneWidget);
+  });
+
+  testWidgets('Zero nutrient meal renders and summarizes without errors', (
+    WidgetTester tester,
+  ) async {
+    final item = MealItem(
+      recordId: 88,
+      foodId: 8,
+      date: '2026-07-21',
+      mealType: 'snack',
+      servings: 2,
+      foodName: '無糖茶',
+      calories: 0,
+      protein: 0,
+      carbs: 0,
+      fat: 0,
+    );
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: ListView(
+            children: [
+              const DashboardSummary(
+                totalCalories: 0,
+                totalProtein: 0,
+                goal: NutritionGoal(
+                  effectiveDate: '2026-07-21',
+                  calorieTarget: 1600,
+                  proteinTarget: 100,
+                ),
+              ),
+              MealSection(
+                title: '點心',
+                mealType: 'snack',
+                date: '2026-07-21',
+                canEdit: false,
+                items: [item],
+                onMealAdded: () async {},
+                onDelete: (_) async {},
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+
+    expect(find.text('0 / 1600 kcal'), findsOneWidget);
+    expect(find.text('0 / 100 g'), findsOneWidget);
+    expect(find.text('2 份・0 kcal・0 g 蛋白質'), findsOneWidget);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('Editing a food uses the same zero-friendly validation', (
+    WidgetTester tester,
+  ) async {
+    Food? updatedFood;
+    final original = Food(
+      id: 8,
+      name: '原食物',
+      calories: 100,
+      protein: 10,
+      carbs: 20,
+      fat: 5,
+    );
+    await tester.pumpWidget(
+      MaterialApp(
+        home: FoodDatabasePage(
+          mealType: 'lunch',
+          date: '2026-07-21',
+          loadFoods: () async =>
+              updatedFood == null ? [original] : [updatedFood!],
+          updateFood: (food) async {
+            updatedFood = food;
+            return 1;
+          },
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const ValueKey('edit_food_8')));
+    await tester.pumpAndSettle();
+
+    expect(find.text('編輯食物'), findsOneWidget);
+    await tester.enterText(find.byKey(const Key('foodCaloriesField')), '0');
+    await tester.enterText(find.byKey(const Key('foodProteinField')), '0');
+    await tester.enterText(find.byKey(const Key('foodCarbsField')), '0');
+    await tester.enterText(find.byKey(const Key('foodFatField')), '0');
+    await tester.ensureVisible(find.byKey(const Key('saveFoodButton')));
+    await tester.tap(find.byKey(const Key('saveFoodButton')));
+    await tester.pumpAndSettle();
+
+    expect(updatedFood?.id, 8);
+    expect(updatedFood?.protein, 0);
+    expect(updatedFood?.carbs, 0);
+    expect(updatedFood?.fat, 0);
   });
 
   testWidgets('Dashboard summary displays daily totals', (
@@ -75,18 +228,58 @@ void main() {
       ),
     );
 
-    expect(find.text('🔥 熱量：450 / 1600 kcal'), findsOneWidget);
-    expect(find.text('🥩 蛋白質：32.5 / 100 g'), findsOneWidget);
-    expect(find.text('剩餘熱量：1150 kcal'), findsOneWidget);
-    expect(find.text('剩餘蛋白質：67.5 g'), findsOneWidget);
+    expect(find.text('剩餘熱量'), findsOneWidget);
+    expect(find.text('1150 kcal'), findsOneWidget);
+    expect(find.text('450 / 1600 kcal'), findsOneWidget);
+    expect(find.text('剩餘蛋白質'), findsOneWidget);
+    expect(find.text('67.5 g'), findsOneWidget);
+    expect(find.text('32.5 / 100 g'), findsOneWidget);
   });
+
+  testWidgets(
+    'Homepage summary remains usable on a narrow screen with large text',
+    (WidgetTester tester) async {
+      tester.view.physicalSize = const Size(320, 700);
+      tester.view.devicePixelRatio = 1;
+      tester.view.platformDispatcher.textScaleFactorTestValue = 1.6;
+      addTearDown(tester.view.resetPhysicalSize);
+      addTearDown(tester.view.resetDevicePixelRatio);
+      addTearDown(tester.view.platformDispatcher.clearTextScaleFactorTestValue);
+
+      await tester.pumpWidget(
+        MaterialApp(
+          theme: AppTheme.light,
+          home: const Scaffold(
+            body: SingleChildScrollView(
+              child: DashboardSummary(
+                totalCalories: 1800,
+                totalProtein: 120,
+                goal: NutritionGoal(
+                  effectiveDate: '2026-07-20',
+                  calorieTarget: 1600,
+                  proteinTarget: 100,
+                ),
+                weight: 90.5,
+                canEditWeight: true,
+              ),
+            ),
+          ),
+        ),
+      );
+
+      expect(find.text('超出 200 kcal'), findsOneWidget);
+      expect(find.text('超出 20 g'), findsOneWidget);
+      expect(find.text('90.5 kg'), findsOneWidget);
+      expect(tester.takeException(), isNull);
+    },
+  );
 
   testWidgets('Meal servings default to one', (WidgetTester tester) async {
     await tester.pumpWidget(
       const MaterialApp(home: AddFoodPage(mealType: 'breakfast')),
     );
 
-    final servingsField = tester.widget<TextField>(
+    final servingsField = tester.widget<TextFormField>(
       find.byKey(const Key('servingsField')),
     );
 
@@ -104,6 +297,8 @@ void main() {
       await tester.enterText(find.widgetWithText(TextField, '食物名稱'), '茶葉蛋');
       await tester.enterText(find.widgetWithText(TextField, '熱量 kcal'), '70');
       await tester.enterText(find.widgetWithText(TextField, '蛋白質 g'), '6');
+      await tester.enterText(find.widgetWithText(TextField, '碳水 g'), '0');
+      await tester.enterText(find.widgetWithText(TextField, '脂肪 g'), '0');
       await tester.enterText(
         find.byKey(const Key('servingsField')),
         invalidServings,
@@ -373,6 +568,8 @@ void main() {
     await tester.enterText(find.widgetWithText(TextField, '食物名稱'), '優格');
     await tester.enterText(find.widgetWithText(TextField, '熱量 kcal'), '100');
     await tester.enterText(find.widgetWithText(TextField, '蛋白質 g'), '8');
+    await tester.enterText(find.widgetWithText(TextField, '碳水 g'), '0');
+    await tester.enterText(find.widgetWithText(TextField, '脂肪 g'), '0');
     await tester.enterText(find.byKey(const Key('servingsField')), '1.5');
     await tester.tap(find.text('建立並加入這一餐'));
     await tester.pumpAndSettle();
@@ -420,7 +617,7 @@ void main() {
     );
 
     expect(find.text('茶葉蛋'), findsOneWidget);
-    expect(find.text('2 份 • 140 kcal • 12 g'), findsOneWidget);
+    expect(find.text('2 份・140 kcal・12 g 蛋白質'), findsOneWidget);
     expect(item.totalCalories, 140);
     expect(item.totalProtein, 12);
 
@@ -494,8 +691,10 @@ void main() {
 
     expect(find.text('今天'), findsOneWidget);
     expect(find.text('2026年7月20日'), findsOneWidget);
-    expect(find.text('🔥 熱量：100 / 1600 kcal'), findsOneWidget);
-    expect(find.text('🥩 蛋白質：10 / 100 g'), findsOneWidget);
+    expect(find.text('1500 kcal'), findsOneWidget);
+    expect(find.text('100 / 1600 kcal'), findsOneWidget);
+    expect(find.text('90 g'), findsOneWidget);
+    expect(find.text('10 / 100 g'), findsOneWidget);
     final nextButton = tester.widget<IconButton>(
       find.byKey(const Key('nextDayButton')),
     );
@@ -505,11 +704,15 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.text('2026年7月19日 星期日'), findsOneWidget);
-    expect(find.text('昨日早餐'), findsOneWidget);
-    expect(find.text('🔥 熱量：120 / 1400 kcal'), findsOneWidget);
-    expect(find.text('🥩 蛋白質：8 / 80 g'), findsOneWidget);
-    expect(find.text('今天午餐'), findsNothing);
+    expect(find.text('1280 kcal'), findsOneWidget);
+    expect(find.text('120 / 1400 kcal'), findsOneWidget);
+    expect(find.text('72 g'), findsOneWidget);
+    expect(find.text('8 / 80 g'), findsOneWidget);
     expect(find.text('此日已封存'), findsOneWidget);
+
+    await tester.scrollUntilVisible(find.text('昨日早餐'), 300);
+    expect(find.text('昨日早餐'), findsOneWidget);
+    expect(find.text('今天午餐'), findsNothing);
     expect(find.text('新增餐點'), findsNothing);
     expect(find.byTooltip('刪除餐點'), findsNothing);
   });
@@ -616,7 +819,7 @@ void main() {
     );
     await tester.pumpAndSettle();
 
-    expect(find.text('⚖️ 體重：尚未記錄'), findsOneWidget);
+    expect(find.text('尚未記錄'), findsOneWidget);
     expect(find.text('記錄體重'), findsOneWidget);
     await tester.tap(find.byKey(const Key('editWeightButton')));
     await tester.pumpAndSettle();
@@ -626,7 +829,7 @@ void main() {
 
     expect(storedWeight?.date, '2026-07-20');
     expect(storedWeight?.weight, 90.5);
-    expect(find.text('⚖️ 體重：90.5 kg'), findsOneWidget);
+    expect(find.text('90.5 kg'), findsOneWidget);
     expect(find.text('修改體重'), findsOneWidget);
 
     await tester.tap(find.byKey(const Key('editWeightButton')));
@@ -655,7 +858,7 @@ void main() {
     await tester.tap(find.byKey(const Key('previousDayButton')));
     await tester.pumpAndSettle();
 
-    expect(find.text('⚖️ 體重：91 kg'), findsOneWidget);
+    expect(find.text('91 kg'), findsOneWidget);
     expect(find.byKey(const Key('editWeightButton')), findsNothing);
     expect(find.byKey(const Key('deleteWeightButton')), findsNothing);
 
@@ -697,14 +900,14 @@ void main() {
     await tester.tap(find.text('取消'));
     await tester.pumpAndSettle();
     expect(deleteCalls, 0);
-    expect(find.text('⚖️ 體重：90 kg'), findsOneWidget);
+    expect(find.text('90 kg'), findsOneWidget);
 
     await tester.tap(find.byKey(const Key('deleteWeightButton')));
     await tester.pumpAndSettle();
     await tester.tap(find.text('刪除'));
     await tester.pumpAndSettle();
     expect(deleteCalls, 1);
-    expect(find.text('⚖️ 體重：尚未記錄'), findsOneWidget);
+    expect(find.text('尚未記錄'), findsOneWidget);
   });
 
   testWidgets('Weight history sorts newest first and has an empty state', (
@@ -752,9 +955,9 @@ void main() {
       ),
     );
 
-    expect(find.text('🔥 熱量：已攝取 450 kcal'), findsOneWidget);
-    expect(find.text('🥩 蛋白質：已攝取 32.5 g'), findsOneWidget);
-    expect(find.text('尚未設定目標'), findsOneWidget);
+    expect(find.text('尚未設定目標'), findsNWidgets(2));
+    expect(find.text('已攝取 450 kcal'), findsOneWidget);
+    expect(find.text('已攝取 32.5 g'), findsOneWidget);
 
     await tester.pumpWidget(
       const MaterialApp(
@@ -772,8 +975,8 @@ void main() {
       ),
     );
 
-    expect(find.text('超出熱量：100 kcal'), findsOneWidget);
-    expect(find.text('超出蛋白質：20 g'), findsOneWidget);
+    expect(find.text('超出 100 kcal'), findsOneWidget);
+    expect(find.text('超出 20 g'), findsOneWidget);
     expect(find.textContaining('-'), findsNothing);
   });
 
@@ -793,7 +996,7 @@ void main() {
     );
     await tester.pumpAndSettle();
 
-    expect(find.text('尚未設定目標'), findsOneWidget);
+    expect(find.text('尚未設定目標'), findsNWidgets(2));
     await tester.tap(find.byKey(const Key('nutritionGoalSettingsButton')));
     await tester.pumpAndSettle();
 
@@ -834,8 +1037,10 @@ void main() {
     expect(storedGoal?.effectiveDate, '2026-07-20');
     expect(storedGoal?.calorieTarget, 1800);
     expect(storedGoal?.proteinTarget, 120.5);
-    expect(find.text('🔥 熱量：0 / 1800 kcal'), findsOneWidget);
-    expect(find.text('🥩 蛋白質：0 / 120.5 g'), findsOneWidget);
+    expect(find.text('1800 kcal'), findsOneWidget);
+    expect(find.text('0 / 1800 kcal'), findsOneWidget);
+    expect(find.text('120.5 g'), findsOneWidget);
+    expect(find.text('0 / 120.5 g'), findsOneWidget);
   });
 
   testWidgets('Goal page does not allow an effective date before today', (

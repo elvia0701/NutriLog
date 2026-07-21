@@ -202,6 +202,18 @@ class DatabaseHelper {
     );
   }
 
+  Future<int> updateFood(Food food) async {
+    final foodId = food.id;
+    if (foodId == null) return 0;
+    final db = await database;
+    return db.update(
+      'foods',
+      food.toMap()..remove('id'),
+      where: 'id = ?',
+      whereArgs: [foodId],
+    );
+  }
+
   Future<List<Food>> getFoods() async {
     final db = await database;
 

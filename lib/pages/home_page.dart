@@ -280,6 +280,7 @@ class _HomePageState extends State<HomePage> {
   }
 
   Widget _buildDateHeader() {
+    final theme = Theme.of(context);
     final subtitle = isViewingToday
         ? fullLocalDate(selectedDate)
         : '${fullLocalDate(selectedDate)} ${weekdayLabel(selectedDate)}';
@@ -307,14 +308,14 @@ class _HomePageState extends State<HomePage> {
               child: Column(
                 children: [
                   if (isViewingToday)
-                    const Text(
-                      '今天',
-                      style: TextStyle(
-                        fontSize: 20,
-                        fontWeight: FontWeight.w600,
-                      ),
+                    Text('今天', style: theme.textTheme.titleLarge),
+                  Text(
+                    subtitle,
+                    textAlign: TextAlign.center,
+                    style: theme.textTheme.bodySmall?.copyWith(
+                      color: theme.colorScheme.onSurfaceVariant,
                     ),
-                  Text(subtitle, style: const TextStyle(color: Colors.grey)),
+                  ),
                 ],
               ),
             ),
@@ -366,80 +367,97 @@ class _HomePageState extends State<HomePage> {
   Widget build(BuildContext context) {
     return Scaffold(
       body: SafeArea(
-        child: Padding(
-          padding: const EdgeInsets.all(20),
-          child: ListView(
-            children: [
-              const Text(
-                'NutriLog',
-                style: TextStyle(fontSize: 32, fontWeight: FontWeight.bold),
+        child: LayoutBuilder(
+          builder: (context, constraints) {
+            final horizontalPadding = constraints.maxWidth >= 600 ? 24.0 : 16.0;
+            return Center(
+              child: ConstrainedBox(
+                constraints: const BoxConstraints(maxWidth: 760),
+                child: ListView(
+                  padding: EdgeInsets.fromLTRB(
+                    horizontalPadding,
+                    20,
+                    horizontalPadding,
+                    104,
+                  ),
+                  children: [
+                    Text(
+                      'NutriLog',
+                      style: Theme.of(context).textTheme.headlineMedium,
+                    ),
+                    const SizedBox(height: 8),
+
+                    _buildDateHeader(),
+
+                    if (!isViewingToday) ...[
+                      const SizedBox(height: 8),
+                      _buildHistoricalNotice(),
+                    ],
+
+                    const SizedBox(height: 20),
+
+                    DashboardSummary(
+                      totalCalories: totalCalories,
+                      totalProtein: totalProtein,
+                      goal: selectedGoal,
+                      onOpenGoalSettings: _openGoalSettings,
+                      weight: selectedWeight?.weight,
+                      canEditWeight: canEditRecords,
+                      onEditWeight: _editWeight,
+                      onDeleteWeight: _deleteWeight,
+                      onOpenWeightHistory: _openWeightHistory,
+                    ),
+
+                    const SizedBox(height: 20),
+
+                    MealSection(
+                      title: '早餐',
+                      mealType: 'breakfast',
+                      date: databaseDate(selectedDate),
+                      canEdit: canEditRecords,
+                      items: breakfastItems,
+                      onMealAdded: loadMealItems,
+                      onDelete: deleteMealItem,
+                    ),
+                    MealSection(
+                      title: '午餐',
+                      mealType: 'lunch',
+                      date: databaseDate(selectedDate),
+                      canEdit: canEditRecords,
+                      items: lunchItems,
+                      onMealAdded: loadMealItems,
+                      onDelete: deleteMealItem,
+                    ),
+
+                    MealSection(
+                      title: '晚餐',
+                      mealType: 'dinner',
+                      date: databaseDate(selectedDate),
+                      canEdit: canEditRecords,
+                      items: dinnerItems,
+                      onMealAdded: loadMealItems,
+                      onDelete: deleteMealItem,
+                    ),
+
+                    MealSection(
+                      title: '點心',
+                      mealType: 'snack',
+                      date: databaseDate(selectedDate),
+                      canEdit: canEditRecords,
+                      items: snackItems,
+                      onMealAdded: loadMealItems,
+                      onDelete: deleteMealItem,
+                    ),
+                  ],
+                ),
               ),
-              const SizedBox(height: 8),
-
-              _buildDateHeader(),
-
-              if (!isViewingToday) _buildHistoricalNotice(),
-
-              const SizedBox(height: 24),
-
-              DashboardSummary(
-                totalCalories: totalCalories,
-                totalProtein: totalProtein,
-                goal: selectedGoal,
-                onOpenGoalSettings: _openGoalSettings,
-                weight: selectedWeight?.weight,
-                canEditWeight: canEditRecords,
-                onEditWeight: _editWeight,
-                onDeleteWeight: _deleteWeight,
-                onOpenWeightHistory: _openWeightHistory,
-              ),
-
-              const SizedBox(height: 24),
-
-              MealSection(
-                title: '早餐',
-                mealType: 'breakfast',
-                date: databaseDate(selectedDate),
-                canEdit: canEditRecords,
-                items: breakfastItems,
-                onMealAdded: loadMealItems,
-                onDelete: deleteMealItem,
-              ),
-              MealSection(
-                title: '午餐',
-                mealType: 'lunch',
-                date: databaseDate(selectedDate),
-                canEdit: canEditRecords,
-                items: lunchItems,
-                onMealAdded: loadMealItems,
-                onDelete: deleteMealItem,
-              ),
-
-              MealSection(
-                title: '晚餐',
-                mealType: 'dinner',
-                date: databaseDate(selectedDate),
-                canEdit: canEditRecords,
-                items: dinnerItems,
-                onMealAdded: loadMealItems,
-                onDelete: deleteMealItem,
-              ),
-
-              MealSection(
-                title: '點心',
-                mealType: 'snack',
-                date: databaseDate(selectedDate),
-                canEdit: canEditRecords,
-                items: snackItems,
-                onMealAdded: loadMealItems,
-                onDelete: deleteMealItem,
-              ),
-            ],
-          ),
+            );
+          },
         ),
       ),
 
-      floatingActionButton: FloatingActionButton(
+      floatingActionButton: FloatingActionButton.extended(
+        tooltip: '建立可重複使用的食物',
         onPressed: () async {
           final AddFoodResult? result = await Navigator.push(
             context,
@@ -450,7 +468,8 @@ class _HomePageState extends State<HomePage> {
             await loadFoods();
           }
         },
-        child: const Icon(Icons.add),
+        icon: const Icon(Icons.restaurant_menu),
+        label: const Text('建立食物'),
       ),
     );
   }

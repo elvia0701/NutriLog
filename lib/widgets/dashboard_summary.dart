@@ -30,113 +30,212 @@ class DashboardSummary extends StatelessWidget {
     return value.toStringAsFixed(6).replaceFirst(RegExp(r'\.?0+$'), '');
   }
 
-  Widget _buildNutritionSummary() {
+  @override
+  Widget build(BuildContext context) {
     final currentGoal = goal;
-    if (currentGoal == null) {
-      return Column(
-        children: [
-          Text(
-            '🔥 熱量：已攝取 ${_formatNumber(totalCalories)} kcal',
-            style: const TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
-          ),
-          const SizedBox(height: 12),
-          Text(
-            '🥩 蛋白質：已攝取 ${_formatNumber(totalProtein)} g',
-            style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w600),
-          ),
-          const SizedBox(height: 12),
-          const Text('尚未設定目標'),
-        ],
-      );
-    }
-
-    final calorieDifference = currentGoal.calorieTarget - totalCalories;
-    final proteinDifference = currentGoal.proteinTarget - totalProtein;
     return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        Text(
-          '🔥 熱量：${_formatNumber(totalCalories)} / '
-          '${_formatNumber(currentGoal.calorieTarget)} kcal',
-          style: const TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
+        Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Expanded(
+              child: _NutritionMetricCard(
+                label: '剩餘熱量',
+                consumed: totalCalories,
+                target: currentGoal?.calorieTarget,
+                unit: 'kcal',
+              ),
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: _NutritionMetricCard(
+                label: '剩餘蛋白質',
+                consumed: totalProtein,
+                target: currentGoal?.proteinTarget,
+                unit: 'g',
+              ),
+            ),
+          ],
         ),
-        const SizedBox(height: 12),
-        Text(
-          '🥩 蛋白質：${_formatNumber(totalProtein)} / '
-          '${_formatNumber(currentGoal.proteinTarget)} g',
-          style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w600),
+        const SizedBox(height: 8),
+        Align(
+          alignment: Alignment.centerRight,
+          child: Tooltip(
+            message: '營養目標設定',
+            child: TextButton.icon(
+              key: const Key('nutritionGoalSettingsButton'),
+              onPressed: onOpenGoalSettings,
+              icon: const Icon(Icons.settings_outlined, size: 19),
+              label: Text(currentGoal == null ? '設定營養目標' : '目標設定'),
+              style: TextButton.styleFrom(
+                foregroundColor: Theme.of(context).colorScheme.onSurfaceVariant,
+              ),
+            ),
+          ),
         ),
-        const SizedBox(height: 12),
-        Text(
-          calorieDifference >= 0
-              ? '剩餘熱量：${_formatNumber(calorieDifference)} kcal'
-              : '超出熱量：${_formatNumber(-calorieDifference)} kcal',
-        ),
-        const SizedBox(height: 4),
-        Text(
-          proteinDifference >= 0
-              ? '剩餘蛋白質：${_formatNumber(proteinDifference)} g'
-              : '超出蛋白質：${_formatNumber(-proteinDifference)} g',
+        const SizedBox(height: 8),
+        _WeightCard(
+          weight: weight,
+          canEdit: canEditWeight,
+          onEdit: onEditWeight,
+          onDelete: onDeleteWeight,
+          onOpenHistory: onOpenWeightHistory,
+          formatNumber: _formatNumber,
         ),
       ],
     );
   }
+}
+
+class _NutritionMetricCard extends StatelessWidget {
+  final String label;
+  final double consumed;
+  final double? target;
+  final String unit;
+
+  const _NutritionMetricCard({
+    required this.label,
+    required this.consumed,
+    required this.target,
+    required this.unit,
+  });
+
+  String _formatNumber(num value) {
+    return value.toStringAsFixed(6).replaceFirst(RegExp(r'\.?0+$'), '');
+  }
 
   @override
   Widget build(BuildContext context) {
+    final colors = Theme.of(context).colorScheme;
+    final metricTarget = target;
+    final isOver = metricTarget != null && consumed > metricTarget;
+    final remaining = metricTarget == null ? null : metricTarget - consumed;
+    final progress = metricTarget == null
+        ? 0.0
+        : (consumed / metricTarget).clamp(0.0, 1.0).toDouble();
+    final prominentText = metricTarget == null
+        ? '尚未設定目標'
+        : isOver
+        ? '超出 ${_formatNumber(-remaining!)} $unit'
+        : '${_formatNumber(remaining!)} $unit';
+    final supportingText = metricTarget == null
+        ? '已攝取 ${_formatNumber(consumed)} $unit'
+        : '${_formatNumber(consumed)} / ${_formatNumber(metricTarget)} $unit';
+
     return Card(
-      elevation: 2,
-      margin: const EdgeInsets.symmetric(vertical: 8),
       child: Padding(
         padding: const EdgeInsets.all(16),
         child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            _buildNutritionSummary(),
-            Align(
-              alignment: Alignment.centerRight,
-              child: TextButton.icon(
-                key: const Key('nutritionGoalSettingsButton'),
-                onPressed: onOpenGoalSettings,
-                icon: const Icon(Icons.tune),
-                label: const Text('營養目標設定'),
-              ),
-            ),
-            const Divider(height: 28),
-            Row(
-              children: [
-                Expanded(
-                  child: Text(
-                    weight == null
-                        ? '⚖️ 體重：尚未記錄'
-                        : '⚖️ 體重：${_formatNumber(weight!)} kg',
-                    style: const TextStyle(
-                      fontSize: 18,
-                      fontWeight: FontWeight.w600,
-                    ),
+            Text(label, style: Theme.of(context).textTheme.labelLarge),
+            const SizedBox(height: 8),
+            SizedBox(
+              width: double.infinity,
+              child: FittedBox(
+                fit: BoxFit.scaleDown,
+                alignment: Alignment.centerLeft,
+                child: Text(
+                  prominentText,
+                  maxLines: 1,
+                  style: Theme.of(context).textTheme.headlineMedium?.copyWith(
+                    color: isOver ? colors.error : colors.primary,
                   ),
                 ),
-                if (canEditWeight)
-                  TextButton(
+              ),
+            ),
+            const SizedBox(height: 8),
+            FittedBox(
+              fit: BoxFit.scaleDown,
+              alignment: Alignment.centerLeft,
+              child: Text(
+                supportingText,
+                maxLines: 1,
+                style: Theme.of(
+                  context,
+                ).textTheme.bodySmall?.copyWith(color: colors.onSurfaceVariant),
+              ),
+            ),
+            const SizedBox(height: 10),
+            LinearProgressIndicator(
+              value: progress,
+              minHeight: 7,
+              borderRadius: BorderRadius.circular(99),
+              color: isOver ? colors.error : colors.primary,
+              backgroundColor: colors.surfaceContainerHighest,
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _WeightCard extends StatelessWidget {
+  final double? weight;
+  final bool canEdit;
+  final VoidCallback? onEdit;
+  final VoidCallback? onDelete;
+  final VoidCallback? onOpenHistory;
+  final String Function(num value) formatNumber;
+
+  const _WeightCard({
+    required this.weight,
+    required this.canEdit,
+    required this.onEdit,
+    required this.onDelete,
+    required this.onOpenHistory,
+    required this.formatNumber,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = Theme.of(context).colorScheme;
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text('當日體重', style: Theme.of(context).textTheme.titleMedium),
+            const SizedBox(height: 6),
+            Text(
+              weight == null ? '尚未記錄' : '${formatNumber(weight!)} kg',
+              style: Theme.of(
+                context,
+              ).textTheme.titleLarge?.copyWith(color: colors.onSurface),
+            ),
+            const SizedBox(height: 8),
+            Wrap(
+              spacing: 4,
+              runSpacing: 4,
+              children: [
+                if (canEdit)
+                  TextButton.icon(
                     key: const Key('editWeightButton'),
-                    onPressed: onEditWeight,
-                    child: Text(weight == null ? '記錄體重' : '修改體重'),
+                    onPressed: onEdit,
+                    icon: Icon(
+                      weight == null ? Icons.add : Icons.edit_outlined,
+                      size: 19,
+                    ),
+                    label: Text(weight == null ? '記錄體重' : '修改體重'),
                   ),
-                if (canEditWeight && weight != null)
+                TextButton.icon(
+                  key: const Key('weightHistoryButton'),
+                  onPressed: onOpenHistory,
+                  icon: const Icon(Icons.history, size: 19),
+                  label: const Text('體重歷史'),
+                ),
+                if (canEdit && weight != null)
                   IconButton(
                     key: const Key('deleteWeightButton'),
-                    onPressed: onDeleteWeight,
+                    onPressed: onDelete,
                     tooltip: '刪除體重紀錄',
-                    icon: const Icon(Icons.delete_outline),
+                    color: colors.onSurfaceVariant,
+                    icon: const Icon(Icons.delete_outline, size: 20),
                   ),
               ],
-            ),
-            Align(
-              alignment: Alignment.centerRight,
-              child: TextButton.icon(
-                key: const Key('weightHistoryButton'),
-                onPressed: onOpenWeightHistory,
-                icon: const Icon(Icons.history),
-                label: const Text('體重歷史'),
-              ),
             ),
           ],
         ),
