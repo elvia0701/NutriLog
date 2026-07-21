@@ -1,19 +1,19 @@
 import 'package:flutter/material.dart';
 
-import '../database/database_helper.dart';
 import '../models/nutrition_goal.dart';
+import '../repositories/nutrition_goal_repository.dart';
 import '../utils/local_date.dart';
 
 class NutritionGoalPage extends StatefulWidget {
+  final NutritionGoalRepository nutritionGoalRepository;
   final DateTime? todayOverride;
   final NutritionGoal? initialGoal;
-  final Future<void> Function(NutritionGoal goal)? saveGoal;
 
   const NutritionGoalPage({
     super.key,
+    required this.nutritionGoalRepository,
     this.todayOverride,
     this.initialGoal,
-    this.saveGoal,
   });
 
   @override
@@ -90,12 +90,7 @@ class _NutritionGoalPageState extends State<NutritionGoalPage> {
       calorieTarget: double.parse(calorieController.text.trim()),
       proteinTarget: double.parse(proteinController.text.trim()),
     );
-    final saver = widget.saveGoal;
-    if (saver != null) {
-      await saver(goal);
-    } else {
-      await DatabaseHelper.instance.saveNutritionGoal(goal);
-    }
+    await widget.nutritionGoalRepository.saveGoal(goal);
     if (!mounted) return;
     Navigator.pop(context, true);
   }

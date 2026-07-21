@@ -21,6 +21,7 @@ import 'package:nutrilog/pages/home_page.dart';
 import 'package:nutrilog/pages/weight_history_page.dart';
 import 'package:nutrilog/pages/weight_trend_page.dart';
 import 'package:nutrilog/pages/nutrition_goal_page.dart';
+import 'package:nutrilog/repositories/nutrition_goal_repository.dart';
 import 'package:nutrilog/repositories/weight_repository.dart';
 import 'package:nutrilog/theme/app_theme.dart';
 import 'package:nutrilog/widgets/dashboard_summary.dart';
@@ -80,6 +81,41 @@ class FakeWeightRepository implements WeightRepository {
   Future<void> deleteWeight(String date) async {
     deleteCalls += 1;
     records.removeWhere((record) => record.date == date);
+  }
+}
+
+class FakeNutritionGoalRepository implements NutritionGoalRepository {
+  final List<NutritionGoal> goals;
+  int saveCalls = 0;
+
+  FakeNutritionGoalRepository([List<NutritionGoal>? goals])
+    : goals = goals ?? <NutritionGoal>[];
+
+  @override
+  Future<NutritionGoal?> getGoalForDate(String date) async {
+    final effective =
+        goals.where((goal) => goal.effectiveDate.compareTo(date) <= 0).toList()
+          ..sort((a, b) => b.effectiveDate.compareTo(a.effectiveDate));
+    return effective.isEmpty ? null : effective.first;
+  }
+
+  @override
+  Future<List<NutritionGoal>> getGoalHistory() async {
+    return goals.toList()
+      ..sort((a, b) => a.effectiveDate.compareTo(b.effectiveDate));
+  }
+
+  @override
+  Future<void> saveGoal(NutritionGoal goal) async {
+    saveCalls += 1;
+    final index = goals.indexWhere(
+      (existing) => existing.effectiveDate == goal.effectiveDate,
+    );
+    if (index == -1) {
+      goals.add(goal);
+    } else {
+      goals[index] = goal;
+    }
   }
 }
 
@@ -675,6 +711,18 @@ void main() {
   testWidgets('Home switches dates and keeps daily summaries independent', (
     WidgetTester tester,
   ) async {
+    final goalRepository = FakeNutritionGoalRepository([
+      const NutritionGoal(
+        effectiveDate: '2026-07-01',
+        calorieTarget: 1400,
+        proteinTarget: 80,
+      ),
+      const NutritionGoal(
+        effectiveDate: '2026-07-20',
+        calorieTarget: 1600,
+        proteinTarget: 100,
+      ),
+    ]);
     Future<List<MealItem>> loader(String date, String mealType) async {
       if (date == '2026-07-20' && mealType == 'lunch') {
         return [
@@ -711,19 +759,9 @@ void main() {
       MaterialApp(
         home: HomePage(
           weightRepository: FakeWeightRepository(),
+          nutritionGoalRepository: goalRepository,
           todayOverride: DateTime(2026, 7, 20),
           mealItemsLoader: loader,
-          goalLoader: (date) async => date == '2026-07-20'
-              ? const NutritionGoal(
-                  effectiveDate: '2026-07-20',
-                  calorieTarget: 1600,
-                  proteinTarget: 100,
-                )
-              : const NutritionGoal(
-                  effectiveDate: '2026-07-01',
-                  calorieTarget: 1400,
-                  proteinTarget: 80,
-                ),
         ),
       ),
     );
@@ -764,6 +802,7 @@ void main() {
       MaterialApp(
         home: HomePage(
           weightRepository: FakeWeightRepository(),
+          nutritionGoalRepository: FakeNutritionGoalRepository(),
           todayOverride: DateTime(2026, 7, 20),
           mealItemsLoader: (_, _) async => [],
         ),
@@ -850,6 +889,7 @@ void main() {
       MaterialApp(
         home: HomePage(
           weightRepository: weightRepository,
+          nutritionGoalRepository: FakeNutritionGoalRepository(),
           todayOverride: DateTime(2026, 7, 20),
           mealItemsLoader: (_, _) async => [],
         ),
@@ -888,6 +928,7 @@ void main() {
       MaterialApp(
         home: HomePage(
           weightRepository: weightRepository,
+          nutritionGoalRepository: FakeNutritionGoalRepository(),
           todayOverride: DateTime(2026, 7, 20),
           mealItemsLoader: (_, _) async => [],
         ),
@@ -920,6 +961,7 @@ void main() {
       MaterialApp(
         home: HomePage(
           weightRepository: weightRepository,
+          nutritionGoalRepository: FakeNutritionGoalRepository(),
           todayOverride: DateTime(2026, 7, 20),
           mealItemsLoader: (_, _) async => [],
         ),
@@ -1016,15 +1058,14 @@ void main() {
   testWidgets('Goal settings validate input and reload Home after saving', (
     WidgetTester tester,
   ) async {
-    NutritionGoal? storedGoal;
+    final goalRepository = FakeNutritionGoalRepository();
     await tester.pumpWidget(
       MaterialApp(
         home: HomePage(
           weightRepository: FakeWeightRepository(),
+          nutritionGoalRepository: goalRepository,
           todayOverride: DateTime(2026, 7, 20),
           mealItemsLoader: (_, _) async => [],
-          goalLoader: (_) async => storedGoal,
-          goalSaver: (goal) async => storedGoal = goal,
         ),
       ),
     );
@@ -1058,7 +1099,7 @@ void main() {
 
     expect(find.text('每日熱量目標必須介於 100–10000 kcal'), findsOneWidget);
     expect(find.text('請輸入有效的每日蛋白質目標'), findsOneWidget);
-    expect(storedGoal, isNull);
+    expect(goalRepository.goals, isEmpty);
 
     await tester.enterText(find.byKey(const Key('calorieTargetField')), '1800');
     await tester.enterText(
@@ -1068,9 +1109,9 @@ void main() {
     await tester.tap(find.byKey(const Key('saveNutritionGoalButton')));
     await tester.pumpAndSettle();
 
-    expect(storedGoal?.effectiveDate, '2026-07-20');
-    expect(storedGoal?.calorieTarget, 1800);
-    expect(storedGoal?.proteinTarget, 120.5);
+    expect(goalRepository.goals.single.effectiveDate, '2026-07-20');
+    expect(goalRepository.goals.single.calorieTarget, 1800);
+    expect(goalRepository.goals.single.proteinTarget, 120.5);
     expect(find.text('1800 kcal'), findsOneWidget);
     expect(find.text('0 / 1800 kcal'), findsOneWidget);
     expect(find.text('120.5 g'), findsOneWidget);
@@ -1082,7 +1123,10 @@ void main() {
   ) async {
     await tester.pumpWidget(
       MaterialApp(
-        home: NutritionGoalPage(todayOverride: DateTime(2026, 7, 20)),
+        home: NutritionGoalPage(
+          nutritionGoalRepository: FakeNutritionGoalRepository(),
+          todayOverride: DateTime(2026, 7, 20),
+        ),
       ),
     );
     await tester.tap(find.byKey(const Key('effectiveDatePicker')));

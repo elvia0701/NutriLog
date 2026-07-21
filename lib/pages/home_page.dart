@@ -9,6 +9,7 @@ import '../models/meal_item.dart';
 import '../models/weight_record.dart';
 import '../models/nutrition_goal.dart';
 import '../repositories/weight_repository.dart';
+import '../repositories/nutrition_goal_repository.dart';
 import '../utils/local_date.dart';
 import '../widgets/weight_entry_dialog.dart';
 import 'weight_history_page.dart';
@@ -16,21 +17,19 @@ import 'nutrition_goal_page.dart';
 
 class HomePage extends StatefulWidget {
   final WeightRepository weightRepository;
+  final NutritionGoalRepository nutritionGoalRepository;
   final DateTime? todayOverride;
   final Future<List<MealItem>> Function(String date, String mealType)?
   mealItemsLoader;
   final Future<void> Function(int recordId)? mealRecordDeleter;
-  final Future<NutritionGoal?> Function(String date)? goalLoader;
-  final Future<void> Function(NutritionGoal goal)? goalSaver;
 
   const HomePage({
     super.key,
     required this.weightRepository,
+    required this.nutritionGoalRepository,
     this.todayOverride,
     this.mealItemsLoader,
     this.mealRecordDeleter,
-    this.goalLoader,
-    this.goalSaver,
   });
 
   @override
@@ -127,10 +126,7 @@ class _HomePageState extends State<HomePage> {
   }
 
   Future<NutritionGoal?> _loadGoal(String date) {
-    final loader = widget.goalLoader;
-    if (loader != null) return loader(date);
-    if (widget.mealItemsLoader != null) return Future.value();
-    return DatabaseHelper.instance.getNutritionGoalForDate(date);
+    return widget.nutritionGoalRepository.getGoalForDate(date);
   }
 
   Future<void> deleteMealItem(MealItem item) async {
@@ -200,9 +196,9 @@ class _HomePageState extends State<HomePage> {
       context,
       MaterialPageRoute(
         builder: (context) => NutritionGoalPage(
+          nutritionGoalRepository: widget.nutritionGoalRepository,
           todayOverride: today,
           initialGoal: currentGoal,
-          saveGoal: widget.goalSaver,
         ),
       ),
     );
