@@ -9,6 +9,25 @@ String databaseDate(DateTime value) {
   return '${date.year}-$month-$day';
 }
 
+DateTime parseDatabaseDate(String value) {
+  final parts = value.split('-');
+  if (parts.length != 3) {
+    throw FormatException('Expected yyyy-MM-dd local date.', value);
+  }
+  return DateTime(
+    int.parse(parts[0]),
+    int.parse(parts[1]),
+    int.parse(parts[2]),
+  );
+}
+
+String slashLocalDate(DateTime value) {
+  final date = localDateOnly(value);
+  final month = date.month.toString().padLeft(2, '0');
+  final day = date.day.toString().padLeft(2, '0');
+  return '${date.year}/$month/$day';
+}
+
 bool isSameLocalDate(DateTime first, DateTime second) {
   return first.year == second.year &&
       first.month == second.month &&

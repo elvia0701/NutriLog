@@ -7,6 +7,7 @@
 
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:fl_chart/fl_chart.dart';
 
 import 'package:nutrilog/database/database_helper.dart';
 import 'package:nutrilog/models/food.dart';
@@ -18,6 +19,7 @@ import 'package:nutrilog/models/nutrition_goal.dart';
 import 'package:nutrilog/pages/food_database_page.dart';
 import 'package:nutrilog/pages/home_page.dart';
 import 'package:nutrilog/pages/weight_history_page.dart';
+import 'package:nutrilog/pages/weight_trend_page.dart';
 import 'package:nutrilog/pages/nutrition_goal_page.dart';
 import 'package:nutrilog/widgets/dashboard_summary.dart';
 import 'package:nutrilog/widgets/meal_section.dart';
@@ -852,5 +854,214 @@ void main() {
     );
     expect(calendar.firstDate, DateTime(2026, 7, 20));
     expect(calendar.initialDate, DateTime(2026, 7, 20));
+  });
+
+  testWidgets('Weight history backfills a past date and reloads immediately', (
+    WidgetTester tester,
+  ) async {
+    final records = <WeightRecord>[];
+    await tester.pumpWidget(
+      MaterialApp(
+        home: WeightHistoryPage(
+          todayOverride: DateTime(2026, 7, 21),
+          loadRecords: () async => records,
+          pickBackfillDate: (_) async => DateTime(2026, 7, 18),
+          saveWeight: (date, weight) async {
+            records.add(WeightRecord(date: date, weight: weight));
+          },
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.byKey(const Key('openWeightTrendButton')), findsOneWidget);
+    await tester.tap(find.byKey(const Key('backfillWeightButton')));
+    await tester.pumpAndSettle();
+    await tester.enterText(find.byKey(const Key('weightField')), '91.5');
+    await tester.tap(find.byKey(const Key('saveWeightButton')));
+    await tester.pumpAndSettle();
+
+    expect(records.single.date, '2026-07-18');
+    expect(records.single.weight, 91.5);
+    expect(find.text('2026-07-18'), findsOneWidget);
+    expect(find.text('91.5 kg'), findsOneWidget);
+  });
+
+  testWidgets(
+    'Existing backfill requires confirmation and updates one record',
+    (WidgetTester tester) async {
+      final records = <WeightRecord>[
+        const WeightRecord(date: '2026-07-18', weight: 91.5),
+      ];
+      var saveCalls = 0;
+      await tester.pumpWidget(
+        MaterialApp(
+          home: WeightHistoryPage(
+            todayOverride: DateTime(2026, 7, 21),
+            loadRecords: () async => records,
+            pickBackfillDate: (_) async => DateTime(2026, 7, 18),
+            saveWeight: (date, weight) async {
+              saveCalls += 1;
+              records[0] = WeightRecord(date: date, weight: weight);
+            },
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.byKey(const Key('backfillWeightButton')));
+      await tester.pumpAndSettle();
+      expect(find.text('此日期已有體重紀錄'), findsOneWidget);
+      await tester.tap(find.text('取消'));
+      await tester.pumpAndSettle();
+      expect(saveCalls, 0);
+      expect(records, hasLength(1));
+
+      await tester.tap(find.byKey(const Key('backfillWeightButton')));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('確認更新'));
+      await tester.pumpAndSettle();
+      final field = tester.widget<TextField>(
+        find.byKey(const Key('weightField')),
+      );
+      expect(field.controller?.text, '91.5');
+      await tester.enterText(find.byKey(const Key('weightField')), '90.8');
+      await tester.tap(find.byKey(const Key('saveWeightButton')));
+      await tester.pumpAndSettle();
+
+      expect(saveCalls, 1);
+      expect(records, hasLength(1));
+      expect(records.single.weight, 90.8);
+      expect(find.text('90.8 kg'), findsOneWidget);
+    },
+  );
+
+  testWidgets('Weight backfill rejects a future date', (
+    WidgetTester tester,
+  ) async {
+    var saveCalls = 0;
+    await tester.pumpWidget(
+      MaterialApp(
+        home: WeightHistoryPage(
+          todayOverride: DateTime(2026, 7, 21),
+          loadRecords: () async => [],
+          pickBackfillDate: (_) async => DateTime(2026, 7, 22),
+          saveWeight: (_, _) async => saveCalls += 1,
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const Key('backfillWeightButton')));
+    await tester.pumpAndSettle();
+
+    expect(find.byType(WeightEntryDialog), findsNothing);
+    expect(saveCalls, 0);
+  });
+
+  testWidgets('Weight trend handles empty and selected-period empty states', (
+    WidgetTester tester,
+  ) async {
+    await tester.pumpWidget(
+      MaterialApp(
+        home: WeightTrendPage(
+          todayOverride: DateTime(2026, 7, 21),
+          loadRecords: () async => [],
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+    expect(find.text('尚無體重紀錄'), findsOneWidget);
+    expect(find.byType(LineChart), findsNothing);
+    expect(find.text('記錄體重'), findsWidgets);
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: WeightTrendPage(
+          key: const ValueKey('periodEmpty'),
+          todayOverride: DateTime(2026, 7, 21),
+          loadRecords: () async => const [
+            WeightRecord(date: '2026-01-01', weight: 95),
+          ],
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+    expect(find.text('此期間尚無體重紀錄'), findsOneWidget);
+    expect(find.byType(LineChart), findsNothing);
+    final defaultPeriod = tester.widget<ChoiceChip>(
+      find.byKey(const ValueKey('weightPeriod_thirtyDays')),
+    );
+    expect(defaultPeriod.selected, isTrue);
+
+    await tester.tap(find.byKey(const ValueKey('weightPeriod_all')));
+    await tester.pumpAndSettle();
+    expect(find.byType(LineChart), findsOneWidget);
+    expect(find.textContaining('資料不足，尚無法計算變化'), findsOneWidget);
+  });
+
+  testWidgets('Trend chart is stable with one or equal-weight points', (
+    WidgetTester tester,
+  ) async {
+    await tester.pumpWidget(
+      const MaterialApp(
+        home: Scaffold(
+          body: SizedBox(
+            height: 300,
+            child: WeightTrendChart(
+              records: [WeightRecord(date: '2026-07-21', weight: 90.5)],
+            ),
+          ),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+    expect(find.byType(LineChart), findsOneWidget);
+    expect(tester.takeException(), isNull);
+
+    await tester.pumpWidget(
+      const MaterialApp(
+        home: Scaffold(
+          body: SizedBox(
+            height: 300,
+            child: WeightTrendChart(
+              records: [
+                WeightRecord(date: '2026-07-18', weight: 90.5),
+                WeightRecord(date: '2026-07-21', weight: 90.5),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+    expect(find.byType(LineChart), findsOneWidget);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('Recording from trend reloads chart data immediately', (
+    WidgetTester tester,
+  ) async {
+    final records = <WeightRecord>[];
+    await tester.pumpWidget(
+      MaterialApp(
+        home: WeightTrendPage(
+          todayOverride: DateTime(2026, 7, 21),
+          loadRecords: () async => records,
+          saveWeight: (date, weight) async {
+            records.add(WeightRecord(date: date, weight: weight));
+          },
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const Key('emptyRecordWeightButton')));
+    await tester.pumpAndSettle();
+    await tester.enterText(find.byKey(const Key('weightField')), '90.5');
+    await tester.tap(find.byKey(const Key('saveWeightButton')));
+    await tester.pumpAndSettle();
+
+    expect(records.single.date, '2026-07-21');
+    expect(find.byType(LineChart), findsOneWidget);
+    expect(find.text('修改今日體重'), findsOneWidget);
   });
 }
