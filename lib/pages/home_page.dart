@@ -8,32 +8,27 @@ import '../database/database_helper.dart';
 import '../models/meal_item.dart';
 import '../models/weight_record.dart';
 import '../models/nutrition_goal.dart';
+import '../repositories/weight_repository.dart';
 import '../utils/local_date.dart';
 import '../widgets/weight_entry_dialog.dart';
 import 'weight_history_page.dart';
 import 'nutrition_goal_page.dart';
 
 class HomePage extends StatefulWidget {
+  final WeightRepository weightRepository;
   final DateTime? todayOverride;
   final Future<List<MealItem>> Function(String date, String mealType)?
   mealItemsLoader;
   final Future<void> Function(int recordId)? mealRecordDeleter;
-  final Future<WeightRecord?> Function(String date)? weightLoader;
-  final Future<void> Function(String date, double weight)? weightSaver;
-  final Future<void> Function(String date)? weightDeleter;
-  final Future<List<WeightRecord>> Function()? weightHistoryLoader;
   final Future<NutritionGoal?> Function(String date)? goalLoader;
   final Future<void> Function(NutritionGoal goal)? goalSaver;
 
   const HomePage({
     super.key,
+    required this.weightRepository,
     this.todayOverride,
     this.mealItemsLoader,
     this.mealRecordDeleter,
-    this.weightLoader,
-    this.weightSaver,
-    this.weightDeleter,
-    this.weightHistoryLoader,
     this.goalLoader,
     this.goalSaver,
   });
@@ -128,10 +123,7 @@ class _HomePageState extends State<HomePage> {
   }
 
   Future<WeightRecord?> _loadWeight(String date) {
-    final loader = widget.weightLoader;
-    if (loader != null) return loader(date);
-    if (widget.mealItemsLoader != null) return Future.value();
-    return DatabaseHelper.instance.getWeightRecordByDate(date);
+    return widget.weightRepository.getWeightForDate(date);
   }
 
   Future<NutritionGoal?> _loadGoal(String date) {
@@ -161,12 +153,7 @@ class _HomePageState extends State<HomePage> {
     if (weight == null) return;
 
     final date = databaseDate(selectedDate);
-    final saver = widget.weightSaver;
-    if (saver != null) {
-      await saver(date, weight);
-    } else {
-      await DatabaseHelper.instance.saveWeightRecord(date, weight);
-    }
+    await widget.weightRepository.saveWeight(date, weight);
     await loadMealItems();
   }
 
@@ -192,12 +179,7 @@ class _HomePageState extends State<HomePage> {
     );
     if (confirmed != true) return;
 
-    final deleter = widget.weightDeleter;
-    if (deleter != null) {
-      await deleter(date);
-    } else {
-      await DatabaseHelper.instance.deleteWeightRecord(date);
-    }
+    await widget.weightRepository.deleteWeight(date);
     await loadMealItems();
   }
 
@@ -206,7 +188,7 @@ class _HomePageState extends State<HomePage> {
       context,
       MaterialPageRoute(
         builder: (context) =>
-            WeightHistoryPage(loadRecords: widget.weightHistoryLoader),
+            WeightHistoryPage(weightRepository: widget.weightRepository),
       ),
     );
   }

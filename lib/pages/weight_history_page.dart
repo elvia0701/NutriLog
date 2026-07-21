@@ -1,21 +1,19 @@
 import 'package:flutter/material.dart';
 
-import '../database/database_helper.dart';
 import '../models/weight_record.dart';
+import '../repositories/weight_repository.dart';
 import '../utils/local_date.dart';
 import '../widgets/weight_entry_dialog.dart';
 import 'weight_trend_page.dart';
 
 class WeightHistoryPage extends StatefulWidget {
-  final Future<List<WeightRecord>> Function()? loadRecords;
-  final Future<void> Function(String date, double weight)? saveWeight;
+  final WeightRepository weightRepository;
   final DateTime? todayOverride;
   final Future<DateTime?> Function(DateTime today)? pickBackfillDate;
 
   const WeightHistoryPage({
     super.key,
-    this.loadRecords,
-    this.saveWeight,
+    required this.weightRepository,
     this.todayOverride,
     this.pickBackfillDate,
   });
@@ -36,9 +34,7 @@ class _WeightHistoryPageState extends State<WeightHistoryPage> {
   }
 
   Future<void> _load() async {
-    final loaded =
-        await (widget.loadRecords?.call() ??
-            DatabaseHelper.instance.getWeightRecords());
+    final loaded = await widget.weightRepository.getWeightHistory();
     if (!mounted) return;
     setState(() {
       records = loaded.toList()..sort((a, b) => b.date.compareTo(a.date));
@@ -50,9 +46,8 @@ class _WeightHistoryPageState extends State<WeightHistoryPage> {
       context,
       MaterialPageRoute(
         builder: (context) => WeightTrendPage(
+          weightRepository: widget.weightRepository,
           todayOverride: widget.todayOverride,
-          loadRecords: widget.loadRecords,
-          saveWeight: widget.saveWeight,
         ),
       ),
     );
@@ -107,12 +102,7 @@ class _WeightHistoryPageState extends State<WeightHistoryPage> {
     );
     if (weight == null) return;
 
-    final saver = widget.saveWeight;
-    if (saver != null) {
-      await saver(date, weight);
-    } else {
-      await DatabaseHelper.instance.saveWeightRecord(date, weight);
-    }
+    await widget.weightRepository.saveWeight(date, weight);
     await _load();
   }
 

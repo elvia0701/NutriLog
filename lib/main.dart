@@ -1,13 +1,22 @@
 import 'package:flutter/material.dart';
+import 'database/database_helper.dart';
 import 'pages/home_page.dart';
+import 'repositories/sqlite_weight_repository.dart';
+import 'repositories/weight_repository.dart';
 import 'theme/app_theme.dart';
 
 void main() {
-  runApp(const NutriLogApp());
+  runApp(
+    NutriLogApp(
+      weightRepository: SqliteWeightRepository(DatabaseHelper.instance),
+    ),
+  );
 }
 
 class NutriLogApp extends StatelessWidget {
-  const NutriLogApp({super.key});
+  final WeightRepository weightRepository;
+
+  const NutriLogApp({super.key, required this.weightRepository});
 
   @override
   Widget build(BuildContext context) {
@@ -15,7 +24,7 @@ class NutriLogApp extends StatelessWidget {
       debugShowCheckedModeBanner: false,
       title: 'NutriLog',
       theme: AppTheme.light,
-      home: const HomePage(),
+      home: HomePage(weightRepository: weightRepository),
     );
   }
 }

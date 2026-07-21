@@ -3,22 +3,20 @@ import 'dart:math' as math;
 import 'package:fl_chart/fl_chart.dart';
 import 'package:flutter/material.dart';
 
-import '../database/database_helper.dart';
 import '../models/weight_record.dart';
 import '../models/weight_trend.dart';
+import '../repositories/weight_repository.dart';
 import '../utils/local_date.dart';
 import '../widgets/weight_entry_dialog.dart';
 
 class WeightTrendPage extends StatefulWidget {
+  final WeightRepository weightRepository;
   final DateTime? todayOverride;
-  final Future<List<WeightRecord>> Function()? loadRecords;
-  final Future<void> Function(String date, double weight)? saveWeight;
 
   const WeightTrendPage({
     super.key,
+    required this.weightRepository,
     this.todayOverride,
-    this.loadRecords,
-    this.saveWeight,
   });
 
   @override
@@ -44,9 +42,7 @@ class _WeightTrendPageState extends State<WeightTrendPage> {
   }
 
   Future<void> _load() async {
-    final records =
-        await (widget.loadRecords?.call() ??
-            DatabaseHelper.instance.getWeightRecords());
+    final records = await widget.weightRepository.getWeightHistory();
     if (!mounted) return;
     setState(() => allRecords = records);
   }
@@ -63,12 +59,7 @@ class _WeightTrendPageState extends State<WeightTrendPage> {
     );
     if (weight == null) return;
 
-    final saver = widget.saveWeight;
-    if (saver != null) {
-      await saver(date, weight);
-    } else {
-      await DatabaseHelper.instance.saveWeightRecord(date, weight);
-    }
+    await widget.weightRepository.saveWeight(date, weight);
     await _load();
   }
 

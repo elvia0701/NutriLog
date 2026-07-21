@@ -21,6 +21,7 @@ import 'package:nutrilog/pages/home_page.dart';
 import 'package:nutrilog/pages/weight_history_page.dart';
 import 'package:nutrilog/pages/weight_trend_page.dart';
 import 'package:nutrilog/pages/nutrition_goal_page.dart';
+import 'package:nutrilog/repositories/weight_repository.dart';
 import 'package:nutrilog/theme/app_theme.dart';
 import 'package:nutrilog/widgets/dashboard_summary.dart';
 import 'package:nutrilog/widgets/meal_section.dart';
@@ -42,6 +43,44 @@ Widget buildPageLauncher(Widget page) {
       ),
     ),
   );
+}
+
+class FakeWeightRepository implements WeightRepository {
+  final List<WeightRecord> records;
+  int saveCalls = 0;
+  int deleteCalls = 0;
+
+  FakeWeightRepository([List<WeightRecord>? records])
+    : records = records ?? <WeightRecord>[];
+
+  @override
+  Future<WeightRecord?> getWeightForDate(String date) async {
+    for (final record in records) {
+      if (record.date == date) return record;
+    }
+    return null;
+  }
+
+  @override
+  Future<List<WeightRecord>> getWeightHistory() async => records.toList();
+
+  @override
+  Future<void> saveWeight(String date, double weight) async {
+    saveCalls += 1;
+    final index = records.indexWhere((record) => record.date == date);
+    final record = WeightRecord(date: date, weight: weight);
+    if (index == -1) {
+      records.add(record);
+    } else {
+      records[index] = record;
+    }
+  }
+
+  @override
+  Future<void> deleteWeight(String date) async {
+    deleteCalls += 1;
+    records.removeWhere((record) => record.date == date);
+  }
 }
 
 void main() {
@@ -671,6 +710,7 @@ void main() {
     await tester.pumpWidget(
       MaterialApp(
         home: HomePage(
+          weightRepository: FakeWeightRepository(),
           todayOverride: DateTime(2026, 7, 20),
           mealItemsLoader: loader,
           goalLoader: (date) async => date == '2026-07-20'
@@ -723,6 +763,7 @@ void main() {
     await tester.pumpWidget(
       MaterialApp(
         home: HomePage(
+          weightRepository: FakeWeightRepository(),
           todayOverride: DateTime(2026, 7, 20),
           mealItemsLoader: (_, _) async => [],
         ),
@@ -804,16 +845,13 @@ void main() {
   testWidgets('Today weight can be added and edited with current value', (
     WidgetTester tester,
   ) async {
-    WeightRecord? storedWeight;
+    final weightRepository = FakeWeightRepository();
     await tester.pumpWidget(
       MaterialApp(
         home: HomePage(
+          weightRepository: weightRepository,
           todayOverride: DateTime(2026, 7, 20),
           mealItemsLoader: (_, _) async => [],
-          weightLoader: (_) async => storedWeight,
-          weightSaver: (date, weight) async {
-            storedWeight = WeightRecord(date: date, weight: weight);
-          },
         ),
       ),
     );
@@ -827,8 +865,8 @@ void main() {
     await tester.tap(find.byKey(const Key('saveWeightButton')));
     await tester.pumpAndSettle();
 
-    expect(storedWeight?.date, '2026-07-20');
-    expect(storedWeight?.weight, 90.5);
+    expect(weightRepository.records.single.date, '2026-07-20');
+    expect(weightRepository.records.single.weight, 90.5);
     expect(find.text('90.5 kg'), findsOneWidget);
     expect(find.text('修改體重'), findsOneWidget);
 
@@ -843,14 +881,15 @@ void main() {
   testWidgets('Past weight is read-only until the date is unlocked', (
     WidgetTester tester,
   ) async {
+    final weightRepository = FakeWeightRepository([
+      const WeightRecord(date: '2026-07-19', weight: 91),
+    ]);
     await tester.pumpWidget(
       MaterialApp(
         home: HomePage(
+          weightRepository: weightRepository,
           todayOverride: DateTime(2026, 7, 20),
           mealItemsLoader: (_, _) async => [],
-          weightLoader: (date) async => date == '2026-07-19'
-              ? const WeightRecord(date: '2026-07-19', weight: 91)
-              : null,
         ),
       ),
     );
@@ -874,21 +913,15 @@ void main() {
   testWidgets('Weight deletion requires confirmation and supports cancel', (
     WidgetTester tester,
   ) async {
-    WeightRecord? storedWeight = const WeightRecord(
-      date: '2026-07-20',
-      weight: 90,
-    );
-    var deleteCalls = 0;
+    final weightRepository = FakeWeightRepository([
+      const WeightRecord(date: '2026-07-20', weight: 90),
+    ]);
     await tester.pumpWidget(
       MaterialApp(
         home: HomePage(
+          weightRepository: weightRepository,
           todayOverride: DateTime(2026, 7, 20),
           mealItemsLoader: (_, _) async => [],
-          weightLoader: (_) async => storedWeight,
-          weightDeleter: (_) async {
-            deleteCalls += 1;
-            storedWeight = null;
-          },
         ),
       ),
     );
@@ -899,14 +932,14 @@ void main() {
     expect(find.text('刪除體重紀錄？'), findsOneWidget);
     await tester.tap(find.text('取消'));
     await tester.pumpAndSettle();
-    expect(deleteCalls, 0);
+    expect(weightRepository.deleteCalls, 0);
     expect(find.text('90 kg'), findsOneWidget);
 
     await tester.tap(find.byKey(const Key('deleteWeightButton')));
     await tester.pumpAndSettle();
     await tester.tap(find.text('刪除'));
     await tester.pumpAndSettle();
-    expect(deleteCalls, 1);
+    expect(weightRepository.deleteCalls, 1);
     expect(find.text('尚未記錄'), findsOneWidget);
   });
 
@@ -916,11 +949,11 @@ void main() {
     await tester.pumpWidget(
       MaterialApp(
         home: WeightHistoryPage(
-          loadRecords: () async => const [
+          weightRepository: FakeWeightRepository([
             WeightRecord(date: '2026-07-18', weight: 91.2),
             WeightRecord(date: '2026-07-20', weight: 90.5),
             WeightRecord(date: '2026-07-19', weight: 90.8),
-          ],
+          ]),
         ),
       ),
     );
@@ -936,7 +969,7 @@ void main() {
       MaterialApp(
         home: WeightHistoryPage(
           key: const ValueKey('emptyWeightHistory'),
-          loadRecords: () async => [],
+          weightRepository: FakeWeightRepository(),
         ),
       ),
     );
@@ -987,6 +1020,7 @@ void main() {
     await tester.pumpWidget(
       MaterialApp(
         home: HomePage(
+          weightRepository: FakeWeightRepository(),
           todayOverride: DateTime(2026, 7, 20),
           mealItemsLoader: (_, _) async => [],
           goalLoader: (_) async => storedGoal,
@@ -1065,15 +1099,13 @@ void main() {
     WidgetTester tester,
   ) async {
     final records = <WeightRecord>[];
+    final weightRepository = FakeWeightRepository(records);
     await tester.pumpWidget(
       MaterialApp(
         home: WeightHistoryPage(
+          weightRepository: weightRepository,
           todayOverride: DateTime(2026, 7, 21),
-          loadRecords: () async => records,
           pickBackfillDate: (_) async => DateTime(2026, 7, 18),
-          saveWeight: (date, weight) async {
-            records.add(WeightRecord(date: date, weight: weight));
-          },
         ),
       ),
     );
@@ -1098,17 +1130,13 @@ void main() {
       final records = <WeightRecord>[
         const WeightRecord(date: '2026-07-18', weight: 91.5),
       ];
-      var saveCalls = 0;
+      final weightRepository = FakeWeightRepository(records);
       await tester.pumpWidget(
         MaterialApp(
           home: WeightHistoryPage(
+            weightRepository: weightRepository,
             todayOverride: DateTime(2026, 7, 21),
-            loadRecords: () async => records,
             pickBackfillDate: (_) async => DateTime(2026, 7, 18),
-            saveWeight: (date, weight) async {
-              saveCalls += 1;
-              records[0] = WeightRecord(date: date, weight: weight);
-            },
           ),
         ),
       );
@@ -1119,7 +1147,7 @@ void main() {
       expect(find.text('此日期已有體重紀錄'), findsOneWidget);
       await tester.tap(find.text('取消'));
       await tester.pumpAndSettle();
-      expect(saveCalls, 0);
+      expect(weightRepository.saveCalls, 0);
       expect(records, hasLength(1));
 
       await tester.tap(find.byKey(const Key('backfillWeightButton')));
@@ -1134,7 +1162,7 @@ void main() {
       await tester.tap(find.byKey(const Key('saveWeightButton')));
       await tester.pumpAndSettle();
 
-      expect(saveCalls, 1);
+      expect(weightRepository.saveCalls, 1);
       expect(records, hasLength(1));
       expect(records.single.weight, 90.8);
       expect(find.text('90.8 kg'), findsOneWidget);
@@ -1144,14 +1172,13 @@ void main() {
   testWidgets('Weight backfill rejects a future date', (
     WidgetTester tester,
   ) async {
-    var saveCalls = 0;
+    final weightRepository = FakeWeightRepository();
     await tester.pumpWidget(
       MaterialApp(
         home: WeightHistoryPage(
+          weightRepository: weightRepository,
           todayOverride: DateTime(2026, 7, 21),
-          loadRecords: () async => [],
           pickBackfillDate: (_) async => DateTime(2026, 7, 22),
-          saveWeight: (_, _) async => saveCalls += 1,
         ),
       ),
     );
@@ -1160,7 +1187,7 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.byType(WeightEntryDialog), findsNothing);
-    expect(saveCalls, 0);
+    expect(weightRepository.saveCalls, 0);
   });
 
   testWidgets('Weight trend handles empty and selected-period empty states', (
@@ -1169,8 +1196,8 @@ void main() {
     await tester.pumpWidget(
       MaterialApp(
         home: WeightTrendPage(
+          weightRepository: FakeWeightRepository(),
           todayOverride: DateTime(2026, 7, 21),
-          loadRecords: () async => [],
         ),
       ),
     );
@@ -1183,10 +1210,10 @@ void main() {
       MaterialApp(
         home: WeightTrendPage(
           key: const ValueKey('periodEmpty'),
+          weightRepository: FakeWeightRepository([
+            const WeightRecord(date: '2026-01-01', weight: 95),
+          ]),
           todayOverride: DateTime(2026, 7, 21),
-          loadRecords: () async => const [
-            WeightRecord(date: '2026-01-01', weight: 95),
-          ],
         ),
       ),
     );
@@ -1247,14 +1274,12 @@ void main() {
     WidgetTester tester,
   ) async {
     final records = <WeightRecord>[];
+    final weightRepository = FakeWeightRepository(records);
     await tester.pumpWidget(
       MaterialApp(
         home: WeightTrendPage(
+          weightRepository: weightRepository,
           todayOverride: DateTime(2026, 7, 21),
-          loadRecords: () async => records,
-          saveWeight: (date, weight) async {
-            records.add(WeightRecord(date: date, weight: weight));
-          },
         ),
       ),
     );
