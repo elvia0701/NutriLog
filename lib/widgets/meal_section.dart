@@ -2,12 +2,16 @@ import 'package:flutter/material.dart';
 
 import '../models/meal_item.dart';
 import '../pages/food_database_page.dart';
+import '../repositories/food_repository.dart';
+import '../repositories/meal_repository.dart';
 
 class MealSection extends StatelessWidget {
   final String title;
   final String mealType;
   final String date;
   final bool canEdit;
+  final FoodRepository foodRepository;
+  final MealRepository mealRepository;
   final List<MealItem> items;
   final Future<void> Function() onMealAdded;
   final Future<void> Function(MealItem item) onDelete;
@@ -18,6 +22,8 @@ class MealSection extends StatelessWidget {
     required this.mealType,
     required this.date,
     required this.canEdit,
+    required this.foodRepository,
+    required this.mealRepository,
     required this.items,
     required this.onMealAdded,
     required this.onDelete,
@@ -94,8 +100,12 @@ class MealSection extends StatelessWidget {
                     final added = await Navigator.push<bool>(
                       context,
                       MaterialPageRoute(
-                        builder: (context) =>
-                            FoodDatabasePage(mealType: mealType, date: date),
+                        builder: (context) => FoodDatabasePage(
+                          mealType: mealType,
+                          date: date,
+                          foodRepository: foodRepository,
+                          mealRepository: mealRepository,
+                        ),
                       ),
                     );
                     if (added == true) await onMealAdded();

@@ -1,30 +1,23 @@
 import 'package:flutter/material.dart';
 
-import '../database/database_helper.dart';
 import '../models/food.dart';
 import '../models/meal_record.dart';
+import '../repositories/food_repository.dart';
+import '../repositories/meal_repository.dart';
 import 'add_food_page.dart';
 
 class FoodDatabasePage extends StatefulWidget {
   final String mealType;
   final String date;
-  final Future<List<Food>> Function()? loadFoods;
-  final Future<int> Function(Food food)? insertFood;
-  final Future<int> Function(Food food)? updateFood;
-  final Future<int> Function(MealRecord mealRecord)? insertMealRecord;
-  final Future<int> Function(int foodId)? getFoodReferenceCount;
-  final Future<FoodRemovalResult> Function(int foodId)? removeFood;
+  final FoodRepository foodRepository;
+  final MealRepository mealRepository;
 
   const FoodDatabasePage({
     super.key,
     required this.mealType,
     required this.date,
-    this.loadFoods,
-    this.insertFood,
-    this.updateFood,
-    this.insertMealRecord,
-    this.getFoodReferenceCount,
-    this.removeFood,
+    required this.foodRepository,
+    required this.mealRepository,
   });
 
   @override
@@ -52,39 +45,27 @@ class _FoodDatabasePageState extends State<FoodDatabasePage> {
   }
 
   Future<List<Food>> _getFoods() {
-    if (widget.loadFoods != null) return widget.loadFoods!();
-    return DatabaseHelper.instance.getFoods();
+    return widget.foodRepository.getFoods();
   }
 
   Future<int> _createFood(Food food) {
-    if (widget.insertFood != null) return widget.insertFood!(food);
-    return DatabaseHelper.instance.insertFood(food);
+    return widget.foodRepository.insertFood(food);
   }
 
   Future<int> _updateFood(Food food) {
-    if (widget.updateFood != null) return widget.updateFood!(food);
-    return DatabaseHelper.instance.updateFood(food);
+    return widget.foodRepository.updateFood(food);
   }
 
   Future<int> _createMealRecord(MealRecord mealRecord) {
-    if (widget.insertMealRecord != null) {
-      return widget.insertMealRecord!(mealRecord);
-    }
-    return DatabaseHelper.instance.insertMealRecord(mealRecord);
+    return widget.mealRepository.insertMealRecord(mealRecord);
   }
 
   Future<int> _getFoodReferenceCount(int foodId) {
-    if (widget.getFoodReferenceCount != null) {
-      return widget.getFoodReferenceCount!(foodId);
-    }
-    return DatabaseHelper.instance.getFoodReferenceCount(foodId);
+    return widget.foodRepository.getFoodReferenceCount(foodId);
   }
 
   Future<FoodRemovalResult> _removeFood(int foodId) {
-    if (widget.removeFood != null) {
-      return widget.removeFood!(foodId);
-    }
-    return DatabaseHelper.instance.removeFood(foodId);
+    return widget.foodRepository.removeFood(foodId);
   }
 
   Future<void> _loadFoods() async {

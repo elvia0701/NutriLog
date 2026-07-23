@@ -9,7 +9,6 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:fl_chart/fl_chart.dart';
 
-import 'package:nutrilog/database/database_helper.dart';
 import 'package:nutrilog/models/food.dart';
 import 'package:nutrilog/pages/add_food_page.dart';
 import 'package:nutrilog/models/meal_item.dart';
@@ -22,6 +21,8 @@ import 'package:nutrilog/pages/weight_history_page.dart';
 import 'package:nutrilog/pages/weight_trend_page.dart';
 import 'package:nutrilog/pages/nutrition_goal_page.dart';
 import 'package:nutrilog/repositories/nutrition_goal_repository.dart';
+import 'package:nutrilog/repositories/food_repository.dart';
+import 'package:nutrilog/repositories/meal_repository.dart';
 import 'package:nutrilog/repositories/weight_repository.dart';
 import 'package:nutrilog/theme/app_theme.dart';
 import 'package:nutrilog/widgets/dashboard_summary.dart';
@@ -119,6 +120,84 @@ class FakeNutritionGoalRepository implements NutritionGoalRepository {
   }
 }
 
+class FakeFoodRepository implements FoodRepository {
+  final Future<List<Food>> Function()? loadFoods;
+  final Future<int> Function(Food food)? createFood;
+  final Future<int> Function(Food food)? editFood;
+  final Future<int> Function(int foodId)? referenceCount;
+  final Future<FoodRemovalResult> Function(int foodId)? remove;
+
+  FakeFoodRepository({
+    this.loadFoods,
+    this.createFood,
+    this.editFood,
+    this.referenceCount,
+    this.remove,
+  });
+
+  @override
+  Future<List<Food>> getFoods() async => loadFoods?.call() ?? [];
+
+  @override
+  Future<int> insertFood(Food food) async => createFood?.call(food) ?? 1;
+
+  @override
+  Future<int> updateFood(Food food) async => editFood?.call(food) ?? 1;
+
+  @override
+  Future<int> getFoodReferenceCount(int foodId) async {
+    return referenceCount?.call(foodId) ?? 0;
+  }
+
+  @override
+  Future<FoodRemovalResult> removeFood(int foodId) async {
+    return remove?.call(foodId) ?? FoodRemovalResult.deleted;
+  }
+}
+
+class FakeMealRepository implements MealRepository {
+  final Future<int> Function(MealRecord mealRecord)? createMealRecord;
+  final Future<List<MealItem>> Function(String date, String mealType)?
+  loadMealItems;
+  final Future<void> Function(int recordId)? deleteRecord;
+
+  FakeMealRepository({
+    this.createMealRecord,
+    this.loadMealItems,
+    this.deleteRecord,
+  });
+
+  @override
+  Future<int> insertMealRecord(MealRecord mealRecord) async {
+    return createMealRecord?.call(mealRecord) ?? 1;
+  }
+
+  @override
+  Future<List<MealRecord>> getAllMealRecords() async => [];
+
+  @override
+  Future<List<MealRecord>> getMealRecordsByDate(String date) async => [];
+
+  @override
+  Future<List<MealRecord>> getMealRecordsByDateAndMealType(
+    String date,
+    String mealType,
+  ) async => [];
+
+  @override
+  Future<List<MealItem>> getMealItemsByDateAndMealType(
+    String date,
+    String mealType,
+  ) async {
+    return loadMealItems?.call(date, mealType) ?? [];
+  }
+
+  @override
+  Future<void> deleteMealRecord(int id) async {
+    await deleteRecord?.call(id);
+  }
+}
+
 void main() {
   testWidgets('Add food page renders its input fields', (
     WidgetTester tester,
@@ -141,12 +220,14 @@ void main() {
     final page = FoodDatabasePage(
       mealType: 'snack',
       date: '2026-07-21',
-      loadFoods: () async => [],
-      insertFood: (food) async {
-        insertedFood = food;
-        return 1;
-      },
-      insertMealRecord: (_) async => 1,
+      foodRepository: FakeFoodRepository(
+        loadFoods: () async => [],
+        createFood: (food) async {
+          insertedFood = food;
+          return 1;
+        },
+      ),
+      mealRepository: FakeMealRepository(createMealRecord: (_) async => 1),
     );
     await tester.pumpWidget(buildPageLauncher(page));
     await tester.tap(find.text('開啟頁面'));
@@ -223,6 +304,8 @@ void main() {
                 mealType: 'snack',
                 date: '2026-07-21',
                 canEdit: false,
+                foodRepository: FakeFoodRepository(),
+                mealRepository: FakeMealRepository(),
                 items: [item],
                 onMealAdded: () async {},
                 onDelete: (_) async {},
@@ -256,12 +339,15 @@ void main() {
         home: FoodDatabasePage(
           mealType: 'lunch',
           date: '2026-07-21',
-          loadFoods: () async =>
-              updatedFood == null ? [original] : [updatedFood!],
-          updateFood: (food) async {
-            updatedFood = food;
-            return 1;
-          },
+          foodRepository: FakeFoodRepository(
+            loadFoods: () async =>
+                updatedFood == null ? [original] : [updatedFood!],
+            editFood: (food) async {
+              updatedFood = food;
+              return 1;
+            },
+          ),
+          mealRepository: FakeMealRepository(),
         ),
       ),
     );
@@ -399,7 +485,8 @@ void main() {
         home: FoodDatabasePage(
           mealType: 'breakfast',
           date: '2026-07-20',
-          loadFoods: () async => foods,
+          foodRepository: FakeFoodRepository(loadFoods: () async => foods),
+          mealRepository: FakeMealRepository(),
         ),
       ),
     );
@@ -430,7 +517,8 @@ void main() {
         home: FoodDatabasePage(
           mealType: 'lunch',
           date: '2026-07-20',
-          loadFoods: () async => [],
+          foodRepository: FakeFoodRepository(loadFoods: () async => []),
+          mealRepository: FakeMealRepository(),
         ),
       ),
     );
@@ -449,15 +537,18 @@ void main() {
         home: FoodDatabasePage(
           mealType: 'breakfast',
           date: '2026-07-20',
-          loadFoods: () async => [
-            Food(id: 1, name: 'Apple', calories: 95, protein: 0.5),
-            Food(id: 2, name: '香蕉', calories: 90, protein: 1.1),
-          ],
-          getFoodReferenceCount: (foodId) async => 0,
-          removeFood: (foodId) async {
-            deletedFoodId = foodId;
-            return FoodRemovalResult.deleted;
-          },
+          foodRepository: FakeFoodRepository(
+            loadFoods: () async => [
+              Food(id: 1, name: 'Apple', calories: 95, protein: 0.5),
+              Food(id: 2, name: '香蕉', calories: 90, protein: 1.1),
+            ],
+            referenceCount: (foodId) async => 0,
+            remove: (foodId) async {
+              deletedFoodId = foodId;
+              return FoodRemovalResult.deleted;
+            },
+          ),
+          mealRepository: FakeMealRepository(),
         ),
       ),
     );
@@ -487,11 +578,14 @@ void main() {
         home: FoodDatabasePage(
           mealType: 'lunch',
           date: '2026-07-20',
-          loadFoods: () async => [
-            Food(id: 7, name: '茶葉蛋', calories: 70, protein: 6),
-          ],
-          getFoodReferenceCount: (foodId) async => 1,
-          removeFood: (foodId) async => FoodRemovalResult.archived,
+          foodRepository: FakeFoodRepository(
+            loadFoods: () async => [
+              Food(id: 7, name: '茶葉蛋', calories: 70, protein: 6),
+            ],
+            referenceCount: (foodId) async => 1,
+            remove: (foodId) async => FoodRemovalResult.archived,
+          ),
+          mealRepository: FakeMealRepository(),
         ),
       ),
     );
@@ -528,14 +622,17 @@ void main() {
         home: FoodDatabasePage(
           mealType: 'snack',
           date: '2026-07-20',
-          loadFoods: () async => [
-            Food(id: 9, name: '優格', calories: 100, protein: 8),
-          ],
-          getFoodReferenceCount: (foodId) async => 0,
-          removeFood: (foodId) async {
-            deleteCalls += 1;
-            return FoodRemovalResult.deleted;
-          },
+          foodRepository: FakeFoodRepository(
+            loadFoods: () async => [
+              Food(id: 9, name: '優格', calories: 100, protein: 8),
+            ],
+            referenceCount: (foodId) async => 0,
+            remove: (foodId) async {
+              deleteCalls += 1;
+              return FoodRemovalResult.deleted;
+            },
+          ),
+          mealRepository: FakeMealRepository(),
         ),
       ),
     );
@@ -558,17 +655,21 @@ void main() {
     final page = FoodDatabasePage(
       mealType: 'dinner',
       date: '2026-07-19',
-      loadFoods: () async => [
-        Food(id: 7, name: '茶葉蛋', calories: 70, protein: 6),
-      ],
-      insertFood: (food) async {
-        insertedFoodCount += 1;
-        return 99;
-      },
-      insertMealRecord: (mealRecord) async {
-        insertedMealRecord = mealRecord;
-        return 1;
-      },
+      foodRepository: FakeFoodRepository(
+        loadFoods: () async => [
+          Food(id: 7, name: '茶葉蛋', calories: 70, protein: 6),
+        ],
+        createFood: (food) async {
+          insertedFoodCount += 1;
+          return 99;
+        },
+      ),
+      mealRepository: FakeMealRepository(
+        createMealRecord: (mealRecord) async {
+          insertedMealRecord = mealRecord;
+          return 1;
+        },
+      ),
     );
 
     await tester.pumpWidget(buildPageLauncher(page));
@@ -619,19 +720,23 @@ void main() {
     final page = FoodDatabasePage(
       mealType: 'snack',
       date: '2026-07-20',
-      loadFoods: () async => [
-        Food(id: 1, name: '香蕉', calories: 90, protein: 1.1),
-      ],
-      insertFood: (food) async {
-        insertedFoodCount += 1;
-        insertedFood = food;
-        return 42;
-      },
-      insertMealRecord: (mealRecord) async {
-        insertedMealCount += 1;
-        insertedMealRecord = mealRecord;
-        return 8;
-      },
+      foodRepository: FakeFoodRepository(
+        loadFoods: () async => [
+          Food(id: 1, name: '香蕉', calories: 90, protein: 1.1),
+        ],
+        createFood: (food) async {
+          insertedFoodCount += 1;
+          insertedFood = food;
+          return 42;
+        },
+      ),
+      mealRepository: FakeMealRepository(
+        createMealRecord: (mealRecord) async {
+          insertedMealCount += 1;
+          insertedMealRecord = mealRecord;
+          return 8;
+        },
+      ),
     );
 
     await tester.pumpWidget(buildPageLauncher(page));
@@ -681,6 +786,8 @@ void main() {
             mealType: 'breakfast',
             date: '2026-07-20',
             canEdit: true,
+            foodRepository: FakeFoodRepository(),
+            mealRepository: FakeMealRepository(),
             items: [item],
             onMealAdded: () async {},
             onDelete: (item) async {
@@ -758,6 +865,8 @@ void main() {
     await tester.pumpWidget(
       MaterialApp(
         home: HomePage(
+          foodRepository: FakeFoodRepository(),
+          mealRepository: FakeMealRepository(),
           weightRepository: FakeWeightRepository(),
           nutritionGoalRepository: goalRepository,
           todayOverride: DateTime(2026, 7, 20),
@@ -801,6 +910,8 @@ void main() {
     await tester.pumpWidget(
       MaterialApp(
         home: HomePage(
+          foodRepository: FakeFoodRepository(),
+          mealRepository: FakeMealRepository(),
           weightRepository: FakeWeightRepository(),
           nutritionGoalRepository: FakeNutritionGoalRepository(),
           todayOverride: DateTime(2026, 7, 20),
@@ -888,6 +999,8 @@ void main() {
     await tester.pumpWidget(
       MaterialApp(
         home: HomePage(
+          foodRepository: FakeFoodRepository(),
+          mealRepository: FakeMealRepository(),
           weightRepository: weightRepository,
           nutritionGoalRepository: FakeNutritionGoalRepository(),
           todayOverride: DateTime(2026, 7, 20),
@@ -927,6 +1040,8 @@ void main() {
     await tester.pumpWidget(
       MaterialApp(
         home: HomePage(
+          foodRepository: FakeFoodRepository(),
+          mealRepository: FakeMealRepository(),
           weightRepository: weightRepository,
           nutritionGoalRepository: FakeNutritionGoalRepository(),
           todayOverride: DateTime(2026, 7, 20),
@@ -960,6 +1075,8 @@ void main() {
     await tester.pumpWidget(
       MaterialApp(
         home: HomePage(
+          foodRepository: FakeFoodRepository(),
+          mealRepository: FakeMealRepository(),
           weightRepository: weightRepository,
           nutritionGoalRepository: FakeNutritionGoalRepository(),
           todayOverride: DateTime(2026, 7, 20),
@@ -1062,6 +1179,8 @@ void main() {
     await tester.pumpWidget(
       MaterialApp(
         home: HomePage(
+          foodRepository: FakeFoodRepository(),
+          mealRepository: FakeMealRepository(),
           weightRepository: FakeWeightRepository(),
           nutritionGoalRepository: goalRepository,
           todayOverride: DateTime(2026, 7, 20),

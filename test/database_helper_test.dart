@@ -8,6 +8,7 @@ import 'package:nutrilog/database/database_helper.dart';
 import 'package:nutrilog/models/food.dart';
 import 'package:nutrilog/models/meal_record.dart';
 import 'package:nutrilog/models/nutrition_goal.dart';
+import 'package:nutrilog/repositories/food_repository.dart';
 
 void main() {
   sqfliteFfiInit();

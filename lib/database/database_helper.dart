@@ -6,8 +6,7 @@ import '../models/meal_record.dart';
 import '../models/meal_item.dart';
 import '../models/weight_record.dart';
 import '../models/nutrition_goal.dart';
-
-enum FoodRemovalResult { deleted, archived, notFound }
+import '../repositories/food_repository.dart';
 
 class DatabaseHelper {
   static final DatabaseHelper instance = DatabaseHelper._();

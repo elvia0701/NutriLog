@@ -1,21 +1,23 @@
 import 'package:flutter/material.dart';
-import 'package:nutrilog/models/food.dart';
 import 'add_food_page.dart';
 
 import '../widgets/dashboard_summary.dart';
 import '../widgets/meal_section.dart';
-import '../database/database_helper.dart';
 import '../models/meal_item.dart';
 import '../models/weight_record.dart';
 import '../models/nutrition_goal.dart';
 import '../repositories/weight_repository.dart';
 import '../repositories/nutrition_goal_repository.dart';
+import '../repositories/food_repository.dart';
+import '../repositories/meal_repository.dart';
 import '../utils/local_date.dart';
 import '../widgets/weight_entry_dialog.dart';
 import 'weight_history_page.dart';
 import 'nutrition_goal_page.dart';
 
 class HomePage extends StatefulWidget {
+  final FoodRepository foodRepository;
+  final MealRepository mealRepository;
   final WeightRepository weightRepository;
   final NutritionGoalRepository nutritionGoalRepository;
   final DateTime? todayOverride;
@@ -25,6 +27,8 @@ class HomePage extends StatefulWidget {
 
   const HomePage({
     super.key,
+    required this.foodRepository,
+    required this.mealRepository,
     required this.weightRepository,
     required this.nutritionGoalRepository,
     this.todayOverride,
@@ -37,8 +41,6 @@ class HomePage extends StatefulWidget {
 }
 
 class _HomePageState extends State<HomePage> {
-  List<Food> foods = [];
-
   List<MealItem> breakfastItems = [];
   List<MealItem> lunchItems = [];
   List<MealItem> dinnerItems = [];
@@ -69,23 +71,7 @@ class _HomePageState extends State<HomePage> {
   void initState() {
     super.initState();
     selectedDate = today;
-    if (widget.mealItemsLoader == null) {
-      loadFoods();
-    }
     loadMealItems();
-  }
-
-  Future<void> loadFoods() async {
-    final loadedFoods = await DatabaseHelper.instance.getFoods();
-
-    final meals = await DatabaseHelper.instance.getAllMealRecords();
-
-    debugPrint('========== MEAL RECORDS：${meals.length} ==========');
-
-    if (!mounted) return;
-    setState(() {
-      foods = loadedFoods;
-    });
   }
 
   Future<void> loadMealItems() async {
@@ -115,10 +101,7 @@ class _HomePageState extends State<HomePage> {
   Future<List<MealItem>> _loadMealType(String date, String mealType) {
     final loader = widget.mealItemsLoader;
     if (loader != null) return loader(date, mealType);
-    return DatabaseHelper.instance.getMealItemsByDateAndMealType(
-      date,
-      mealType,
-    );
+    return widget.mealRepository.getMealItemsByDateAndMealType(date, mealType);
   }
 
   Future<WeightRecord?> _loadWeight(String date) {
@@ -134,7 +117,7 @@ class _HomePageState extends State<HomePage> {
     if (deleter != null) {
       await deleter(item.recordId);
     } else {
-      await DatabaseHelper.instance.deleteMealRecord(item.recordId);
+      await widget.mealRepository.deleteMealRecord(item.recordId);
     }
     await loadMealItems();
   }
@@ -393,6 +376,8 @@ class _HomePageState extends State<HomePage> {
                       mealType: 'breakfast',
                       date: databaseDate(selectedDate),
                       canEdit: canEditRecords,
+                      foodRepository: widget.foodRepository,
+                      mealRepository: widget.mealRepository,
                       items: breakfastItems,
                       onMealAdded: loadMealItems,
                       onDelete: deleteMealItem,
@@ -402,6 +387,8 @@ class _HomePageState extends State<HomePage> {
                       mealType: 'lunch',
                       date: databaseDate(selectedDate),
                       canEdit: canEditRecords,
+                      foodRepository: widget.foodRepository,
+                      mealRepository: widget.mealRepository,
                       items: lunchItems,
                       onMealAdded: loadMealItems,
                       onDelete: deleteMealItem,
@@ -412,6 +399,8 @@ class _HomePageState extends State<HomePage> {
                       mealType: 'dinner',
                       date: databaseDate(selectedDate),
                       canEdit: canEditRecords,
+                      foodRepository: widget.foodRepository,
+                      mealRepository: widget.mealRepository,
                       items: dinnerItems,
                       onMealAdded: loadMealItems,
                       onDelete: deleteMealItem,
@@ -422,6 +411,8 @@ class _HomePageState extends State<HomePage> {
                       mealType: 'snack',
                       date: databaseDate(selectedDate),
                       canEdit: canEditRecords,
+                      foodRepository: widget.foodRepository,
+                      mealRepository: widget.mealRepository,
                       items: snackItems,
                       onMealAdded: loadMealItems,
                       onDelete: deleteMealItem,
@@ -442,8 +433,7 @@ class _HomePageState extends State<HomePage> {
             MaterialPageRoute(builder: (context) => const AddFoodPage()),
           );
           if (result != null) {
-            await DatabaseHelper.instance.insertFood(result.food);
-            await loadFoods();
+            await widget.foodRepository.insertFood(result.food);
           }
         },
         icon: const Icon(Icons.restaurant_menu),
