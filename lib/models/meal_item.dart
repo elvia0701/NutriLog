@@ -1,6 +1,8 @@
 class MealItem {
-  final int recordId;
-  final int foodId;
+  final int? recordId;
+  final String? cloudRecordId;
+  final int? foodId;
+  final String? foodCloudId;
   final String date;
   final String mealType;
   final double servings;
@@ -11,8 +13,10 @@ class MealItem {
   final double fat;
 
   MealItem({
-    required this.recordId,
-    required this.foodId,
+    this.recordId,
+    this.cloudRecordId,
+    this.foodId,
+    this.foodCloudId,
     required this.date,
     required this.mealType,
     required this.servings,

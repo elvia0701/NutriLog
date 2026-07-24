@@ -25,9 +25,9 @@ class HomePage extends StatefulWidget {
   final DateTime? todayOverride;
   final Future<List<MealItem>> Function(String date, String mealType)?
   mealItemsLoader;
-  final Future<void> Function(int recordId)? mealRecordDeleter;
+  final Future<void> Function(MealItem item)? mealRecordDeleter;
   final AuthService? authService;
-  final bool mealActionsEnabled;
+  final bool localProfileDataEnabled;
 
   const HomePage({
     super.key,
@@ -39,7 +39,7 @@ class HomePage extends StatefulWidget {
     this.mealItemsLoader,
     this.mealRecordDeleter,
     this.authService,
-    this.mealActionsEnabled = true,
+    this.localProfileDataEnabled = true,
   });
 
   @override
@@ -55,6 +55,9 @@ class _HomePageState extends State<HomePage> {
   bool historicalDateUnlocked = false;
   WeightRecord? selectedWeight;
   NutritionGoal? selectedGoal;
+  bool _isMealLoading = true;
+  bool _isMealMutating = false;
+  Object? _mealLoadError;
 
   DateTime get today => localDateOnly(widget.todayOverride ?? DateTime.now());
   bool get isViewingToday => isSameLocalDate(selectedDate, today);
@@ -82,26 +85,61 @@ class _HomePageState extends State<HomePage> {
 
   Future<void> loadMealItems() async {
     final requestedDate = databaseDate(selectedDate);
-    final results = await Future.wait<Object?>([
-      _loadMealType(requestedDate, 'breakfast'),
-      _loadMealType(requestedDate, 'lunch'),
-      _loadMealType(requestedDate, 'dinner'),
-      _loadMealType(requestedDate, 'snack'),
-      _loadWeight(requestedDate),
-      _loadGoal(requestedDate),
-    ]);
+    if (mounted) {
+      setState(() {
+        _isMealLoading = true;
+        _mealLoadError = null;
+      });
+    }
 
-    if (!mounted) return;
-    if (requestedDate != databaseDate(selectedDate)) return;
+    List<List<MealItem>>? meals;
+    Object? mealError;
+    try {
+      meals = await Future.wait<List<MealItem>>([
+        _loadMealType(requestedDate, 'breakfast'),
+        _loadMealType(requestedDate, 'lunch'),
+        _loadMealType(requestedDate, 'dinner'),
+        _loadMealType(requestedDate, 'snack'),
+      ]);
+    } catch (error, stackTrace) {
+      mealError = error;
+      debugPrint('HomePage failed to load meals: $error');
+      debugPrintStack(stackTrace: stackTrace);
+    } finally {
+      if (mounted && requestedDate == databaseDate(selectedDate)) {
+        setState(() {
+          if (mealError == null && meals != null) {
+            breakfastItems = meals[0];
+            lunchItems = meals[1];
+            dinnerItems = meals[2];
+            snackItems = meals[3];
+          }
+          _mealLoadError = mealError;
+          _isMealLoading = false;
+        });
+      }
+    }
 
-    setState(() {
-      breakfastItems = results[0] as List<MealItem>;
-      lunchItems = results[1] as List<MealItem>;
-      dinnerItems = results[2] as List<MealItem>;
-      snackItems = results[3] as List<MealItem>;
-      selectedWeight = results[4] as WeightRecord?;
-      selectedGoal = results[5] as NutritionGoal?;
-    });
+    if (widget.localProfileDataEnabled) {
+      await _loadLocalProfileData(requestedDate);
+    }
+  }
+
+  Future<void> _loadLocalProfileData(String requestedDate) async {
+    try {
+      final results = await Future.wait<Object?>([
+        _loadWeight(requestedDate),
+        _loadGoal(requestedDate),
+      ]);
+      if (!mounted || requestedDate != databaseDate(selectedDate)) return;
+      setState(() {
+        selectedWeight = results[0] as WeightRecord?;
+        selectedGoal = results[1] as NutritionGoal?;
+      });
+    } catch (error, stackTrace) {
+      debugPrint('HomePage failed to load local profile data: $error');
+      debugPrintStack(stackTrace: stackTrace);
+    }
   }
 
   Future<List<MealItem>> _loadMealType(String date, String mealType) {
@@ -119,13 +157,29 @@ class _HomePageState extends State<HomePage> {
   }
 
   Future<void> deleteMealItem(MealItem item) async {
-    final deleter = widget.mealRecordDeleter;
-    if (deleter != null) {
-      await deleter(item.recordId);
-    } else {
-      await widget.mealRepository.deleteMealRecord(item.recordId);
+    if (_isMealMutating) return;
+    setState(() => _isMealMutating = true);
+    try {
+      final deleter = widget.mealRecordDeleter;
+      if (deleter != null) {
+        await deleter(item);
+      } else {
+        await widget.mealRepository.deleteMealRecord(item);
+      }
+      await loadMealItems();
+    } catch (error, stackTrace) {
+      debugPrint('HomePage failed to delete meal: $error');
+      debugPrintStack(stackTrace: stackTrace);
+      if (!mounted) return;
+      final message = error is MealRepositoryException
+          ? error.message
+          : '無法刪除餐點，請稍後再試。';
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text(message)));
+    } finally {
+      if (mounted) setState(() => _isMealMutating = false);
     }
-    await loadMealItems();
   }
 
   Future<void> _editWeight() async {
@@ -365,6 +419,100 @@ class _HomePageState extends State<HomePage> {
     );
   }
 
+  Widget _buildMealContent() {
+    if (_isMealLoading) {
+      return const Padding(
+        padding: EdgeInsets.symmetric(vertical: 32),
+        child: Center(
+          child: CircularProgressIndicator(key: Key('mealLoadingIndicator')),
+        ),
+      );
+    }
+
+    final error = _mealLoadError;
+    if (error != null) {
+      final message = error is MealRepositoryException
+          ? error.message
+          : '無法載入餐點資料，請稍後再試。';
+      return Card(
+        key: const Key('mealLoadError'),
+        child: Padding(
+          padding: const EdgeInsets.all(20),
+          child: Column(
+            children: [
+              Icon(
+                Icons.cloud_off_outlined,
+                color: Theme.of(context).colorScheme.error,
+                size: 40,
+              ),
+              const SizedBox(height: 12),
+              const Text('無法載入餐點資料'),
+              const SizedBox(height: 8),
+              Text(message, textAlign: TextAlign.center),
+              const SizedBox(height: 12),
+              FilledButton.icon(
+                key: const Key('retryLoadMealsButton'),
+                onPressed: loadMealItems,
+                icon: const Icon(Icons.refresh),
+                label: const Text('重新載入'),
+              ),
+            ],
+          ),
+        ),
+      );
+    }
+
+    final canEditMeals = canEditRecords && !_isMealMutating;
+    return Column(
+      children: [
+        MealSection(
+          title: '早餐',
+          mealType: 'breakfast',
+          date: databaseDate(selectedDate),
+          canEdit: canEditMeals,
+          foodRepository: widget.foodRepository,
+          mealRepository: widget.mealRepository,
+          items: breakfastItems,
+          onMealAdded: loadMealItems,
+          onDelete: deleteMealItem,
+        ),
+        MealSection(
+          title: '午餐',
+          mealType: 'lunch',
+          date: databaseDate(selectedDate),
+          canEdit: canEditMeals,
+          foodRepository: widget.foodRepository,
+          mealRepository: widget.mealRepository,
+          items: lunchItems,
+          onMealAdded: loadMealItems,
+          onDelete: deleteMealItem,
+        ),
+        MealSection(
+          title: '晚餐',
+          mealType: 'dinner',
+          date: databaseDate(selectedDate),
+          canEdit: canEditMeals,
+          foodRepository: widget.foodRepository,
+          mealRepository: widget.mealRepository,
+          items: dinnerItems,
+          onMealAdded: loadMealItems,
+          onDelete: deleteMealItem,
+        ),
+        MealSection(
+          title: '點心',
+          mealType: 'snack',
+          date: databaseDate(selectedDate),
+          canEdit: canEditMeals,
+          foodRepository: widget.foodRepository,
+          mealRepository: widget.mealRepository,
+          items: snackItems,
+          onMealAdded: loadMealItems,
+          onDelete: deleteMealItem,
+        ),
+      ],
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -415,66 +563,26 @@ class _HomePageState extends State<HomePage> {
                       totalCalories: totalCalories,
                       totalProtein: totalProtein,
                       goal: selectedGoal,
-                      onOpenGoalSettings: _openGoalSettings,
+                      onOpenGoalSettings: widget.localProfileDataEnabled
+                          ? _openGoalSettings
+                          : null,
                       weight: selectedWeight?.weight,
-                      canEditWeight: canEditRecords,
-                      onEditWeight: _editWeight,
-                      onDeleteWeight: _deleteWeight,
-                      onOpenWeightHistory: _openWeightHistory,
+                      canEditWeight:
+                          widget.localProfileDataEnabled && canEditRecords,
+                      onEditWeight: widget.localProfileDataEnabled
+                          ? _editWeight
+                          : null,
+                      onDeleteWeight: widget.localProfileDataEnabled
+                          ? _deleteWeight
+                          : null,
+                      onOpenWeightHistory: widget.localProfileDataEnabled
+                          ? _openWeightHistory
+                          : null,
                     ),
 
                     const SizedBox(height: 20),
 
-                    MealSection(
-                      title: '早餐',
-                      mealType: 'breakfast',
-                      date: databaseDate(selectedDate),
-                      canEdit: canEditRecords,
-                      foodRepository: widget.foodRepository,
-                      mealRepository: widget.mealRepository,
-                      items: breakfastItems,
-                      onMealAdded: loadMealItems,
-                      onDelete: deleteMealItem,
-                      mealActionsEnabled: widget.mealActionsEnabled,
-                    ),
-                    MealSection(
-                      title: '午餐',
-                      mealType: 'lunch',
-                      date: databaseDate(selectedDate),
-                      canEdit: canEditRecords,
-                      foodRepository: widget.foodRepository,
-                      mealRepository: widget.mealRepository,
-                      items: lunchItems,
-                      onMealAdded: loadMealItems,
-                      onDelete: deleteMealItem,
-                      mealActionsEnabled: widget.mealActionsEnabled,
-                    ),
-
-                    MealSection(
-                      title: '晚餐',
-                      mealType: 'dinner',
-                      date: databaseDate(selectedDate),
-                      canEdit: canEditRecords,
-                      foodRepository: widget.foodRepository,
-                      mealRepository: widget.mealRepository,
-                      items: dinnerItems,
-                      onMealAdded: loadMealItems,
-                      onDelete: deleteMealItem,
-                      mealActionsEnabled: widget.mealActionsEnabled,
-                    ),
-
-                    MealSection(
-                      title: '點心',
-                      mealType: 'snack',
-                      date: databaseDate(selectedDate),
-                      canEdit: canEditRecords,
-                      foodRepository: widget.foodRepository,
-                      mealRepository: widget.mealRepository,
-                      items: snackItems,
-                      onMealAdded: loadMealItems,
-                      onDelete: deleteMealItem,
-                      mealActionsEnabled: widget.mealActionsEnabled,
-                    ),
+                    _buildMealContent(),
                   ],
                 ),
               ),

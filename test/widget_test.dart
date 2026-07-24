@@ -163,7 +163,7 @@ class FakeMealRepository implements MealRepository {
   final Future<int> Function(MealRecord mealRecord)? createMealRecord;
   final Future<List<MealItem>> Function(String date, String mealType)?
   loadMealItems;
-  final Future<void> Function(int recordId)? deleteRecord;
+  final Future<void> Function(MealItem item)? deleteRecord;
 
   FakeMealRepository({
     this.createMealRecord,
@@ -172,8 +172,9 @@ class FakeMealRepository implements MealRepository {
   });
 
   @override
-  Future<int> insertMealRecord(MealRecord mealRecord) async {
-    return createMealRecord?.call(mealRecord) ?? 1;
+  Future<MealRecord> insertMealRecord(MealRecord mealRecord) async {
+    final id = await createMealRecord?.call(mealRecord) ?? 1;
+    return mealRecord.copyWith(id: id);
   }
 
   @override
@@ -197,8 +198,8 @@ class FakeMealRepository implements MealRepository {
   }
 
   @override
-  Future<void> deleteMealRecord(int id) async {
-    await deleteRecord?.call(id);
+  Future<void> deleteMealRecord(MealItem item) async {
+    await deleteRecord?.call(item);
   }
 }
 
@@ -602,54 +603,49 @@ void main() {
   });
 
   testWidgets(
-    'Cloud food creation stays in food database without writing meal',
+    'Cloud food creation writes a cloud meal without a SQLite food id',
     (WidgetTester tester) async {
-      final foods = <Food>[];
       var mealInsertCalls = 0;
-      await tester.pumpWidget(
-        MaterialApp(
-          home: FoodDatabasePage(
-            mealType: 'lunch',
-            date: '2026-07-20',
-            mealActionsEnabled: false,
-            foodRepository: FakeFoodRepository(
-              loadFoods: () async => List.of(foods),
-              createFood: (food) async {
-                final created = food.copyWith(
-                  cloudId: '22222222-2222-4222-8222-222222222222',
-                );
-                foods.add(created);
-                return created;
-              },
-            ),
-            mealRepository: FakeMealRepository(
-              createMealRecord: (record) async {
-                mealInsertCalls += 1;
-                return 1;
-              },
-            ),
-          ),
+      MealRecord? insertedMeal;
+      final page = FoodDatabasePage(
+        mealType: 'lunch',
+        date: '2026-07-20',
+        foodRepository: FakeFoodRepository(
+          loadFoods: () async => [],
+          createFood: (food) async =>
+              food.copyWith(cloudId: '22222222-2222-4222-8222-222222222222'),
+        ),
+        mealRepository: FakeMealRepository(
+          createMealRecord: (record) async {
+            mealInsertCalls += 1;
+            insertedMeal = record;
+            return 1;
+          },
         ),
       );
+      await tester.pumpWidget(buildPageLauncher(page));
+      await tester.tap(find.text('開啟頁面'));
       await tester.pumpAndSettle();
 
       await tester.tap(find.byKey(const Key('createNewFoodButton')));
       await tester.pumpAndSettle();
-      expect(find.byKey(const Key('servingsField')), findsNothing);
-      expect(find.text('建立食物'), findsOneWidget);
+      expect(find.byKey(const Key('servingsField')), findsOneWidget);
+      expect(find.text('建立並加入這一餐'), findsOneWidget);
 
       await tester.enterText(find.byKey(const Key('foodNameField')), '無糖茶');
       await tester.enterText(find.byKey(const Key('foodCaloriesField')), '0');
       await tester.enterText(find.byKey(const Key('foodProteinField')), '0');
       await tester.enterText(find.byKey(const Key('foodCarbsField')), '0');
       await tester.enterText(find.byKey(const Key('foodFatField')), '0');
+      await tester.enterText(find.byKey(const Key('servingsField')), '1.5');
       await tester.tap(find.byKey(const Key('saveFoodButton')));
       await tester.pumpAndSettle();
 
-      expect(mealInsertCalls, 0);
-      expect(find.text('食物資料庫'), findsOneWidget);
-      expect(find.text('無糖茶'), findsOneWidget);
-      expect(find.text('食物已建立。'), findsOneWidget);
+      expect(mealInsertCalls, 1);
+      expect(insertedMeal?.foodId, isNull);
+      expect(insertedMeal?.foodCloudId, '22222222-2222-4222-8222-222222222222');
+      expect(insertedMeal?.servings, 1.5);
+      expect(insertedMeal?.foodNameSnapshot, '無糖茶');
     },
   );
 
@@ -668,7 +664,6 @@ void main() {
         home: FoodDatabasePage(
           mealType: 'snack',
           date: '2026-07-20',
-          mealActionsEnabled: false,
           foodRepository: FakeFoodRepository(
             loadFoods: () async => [food],
             editFood: (updated) async {
@@ -877,6 +872,44 @@ void main() {
     expect(insertedMealRecord?.proteinSnapshot, 6);
   });
 
+  testWidgets('Failed cloud meal insert stays on food page and shows error', (
+    WidgetTester tester,
+  ) async {
+    final page = FoodDatabasePage(
+      mealType: 'dinner',
+      date: '2026-07-24',
+      foodRepository: FakeFoodRepository(
+        loadFoods: () async => [
+          Food(
+            cloudId: '22222222-2222-4222-8222-222222222222',
+            name: '已封存食品',
+            calories: 70,
+            protein: 6,
+          ),
+        ],
+      ),
+      mealRepository: FakeMealRepository(
+        createMealRecord: (_) async {
+          throw const MealRepositoryException(
+            MealRepositoryFailureKind.foodUnavailable,
+            '這項食品不存在、已封存或無法使用，請重新選擇食品。',
+          );
+        },
+      ),
+    );
+    await tester.pumpWidget(buildPageLauncher(page));
+    await tester.tap(find.text('開啟頁面'));
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.text('已封存食品'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('加入餐點'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('食物資料庫'), findsOneWidget);
+    expect(find.text('這項食品不存在、已封存或無法使用，請重新選擇食品。'), findsOneWidget);
+  });
+
   testWidgets('Creating a new food inserts one food and one meal record', (
     WidgetTester tester,
   ) async {
@@ -958,7 +991,7 @@ void main() {
             items: [item],
             onMealAdded: () async {},
             onDelete: (item) async {
-              deletedRecordId = item.recordId;
+              deletedRecordId = item.recordId!;
             },
           ),
         ),
@@ -1069,6 +1102,194 @@ void main() {
     expect(find.text('今天午餐'), findsNothing);
     expect(find.text('新增餐點'), findsNothing);
     expect(find.byTooltip('刪除餐點'), findsNothing);
+  });
+
+  testWidgets('Home meal loading ends and repository errors can be retried', (
+    WidgetTester tester,
+  ) async {
+    final pendingMeals = Completer<List<MealItem>>();
+    var failLoads = false;
+    Future<List<MealItem>> loader(String date, String mealType) {
+      if (failLoads) {
+        throw const MealRepositoryException(
+          MealRepositoryFailureKind.network,
+          '無法連線至雲端服務，請確認網路後再試。',
+        );
+      }
+      return pendingMeals.future;
+    }
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: HomePage(
+          foodRepository: FakeFoodRepository(),
+          mealRepository: FakeMealRepository(),
+          weightRepository: FakeWeightRepository(),
+          nutritionGoalRepository: FakeNutritionGoalRepository(),
+          localProfileDataEnabled: false,
+          todayOverride: DateTime(2026, 7, 24),
+          mealItemsLoader: loader,
+        ),
+      ),
+    );
+    await tester.pump();
+
+    expect(find.byKey(const Key('mealLoadingIndicator')), findsOneWidget);
+    pendingMeals.complete([]);
+    await tester.pumpAndSettle();
+    expect(find.byKey(const Key('mealLoadingIndicator')), findsNothing);
+
+    failLoads = true;
+    await tester.tap(find.byKey(const Key('previousDayButton')));
+    await tester.pumpAndSettle();
+    await tester.drag(find.byType(ListView).first, const Offset(0, -500));
+    await tester.pumpAndSettle();
+    expect(find.byKey(const Key('mealLoadError')), findsOneWidget);
+    expect(find.text('無法連線至雲端服務，請確認網路後再試。'), findsOneWidget);
+
+    failLoads = false;
+    await tester.tap(find.byKey(const Key('retryLoadMealsButton')));
+    await tester.pumpAndSettle();
+    expect(find.byKey(const Key('mealLoadError')), findsNothing);
+  });
+
+  testWidgets('Cloud meal add and delete immediately refresh Home summary', (
+    WidgetTester tester,
+  ) async {
+    final items = <MealItem>[];
+    var nextMeal = 1;
+    final mealRepository = FakeMealRepository(
+      loadMealItems: (date, mealType) async => items
+          .where((item) => item.date == date && item.mealType == mealType)
+          .toList(),
+      createMealRecord: (record) async {
+        items.add(
+          MealItem(
+            cloudRecordId:
+                '33333333-3333-4333-8333-${nextMeal.toString().padLeft(12, '0')}',
+            foodCloudId: record.foodCloudId,
+            date: record.date,
+            mealType: record.mealType,
+            servings: record.servings,
+            foodName: record.foodNameSnapshot,
+            calories: record.caloriesSnapshot,
+            protein: record.proteinSnapshot,
+            carbs: record.carbsSnapshot,
+            fat: record.fatSnapshot,
+          ),
+        );
+        nextMeal += 1;
+        return nextMeal;
+      },
+      deleteRecord: (item) async {
+        items.removeWhere(
+          (existing) => existing.cloudRecordId == item.cloudRecordId,
+        );
+      },
+    );
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: HomePage(
+          foodRepository: FakeFoodRepository(
+            loadFoods: () async => [
+              Food(
+                cloudId: '22222222-2222-4222-8222-222222222222',
+                name: '雲端食品',
+                calories: 100,
+                protein: 10,
+              ),
+            ],
+          ),
+          mealRepository: mealRepository,
+          weightRepository: FakeWeightRepository(),
+          nutritionGoalRepository: FakeNutritionGoalRepository(),
+          localProfileDataEnabled: false,
+          todayOverride: DateTime(2026, 7, 24),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+    expect(find.text('已攝取 0 kcal'), findsOneWidget);
+
+    await tester.ensureVisible(find.text('新增餐點').first);
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('新增餐點').first);
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('雲端食品'));
+    await tester.pumpAndSettle();
+    await tester.enterText(
+      find.byKey(const Key('existingFoodServingsField')),
+      '1.5',
+    );
+    await tester.tap(find.text('加入餐點'));
+    await tester.pumpAndSettle();
+
+    await tester.drag(find.byType(ListView).first, const Offset(0, 1000));
+    await tester.pumpAndSettle();
+    expect(find.text('已攝取 150 kcal'), findsOneWidget);
+    expect(find.text('已攝取 15 g'), findsOneWidget);
+    await tester.ensureVisible(find.byTooltip('刪除餐點'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byTooltip('刪除餐點'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('刪除'));
+    await tester.pumpAndSettle();
+
+    await tester.drag(find.byType(ListView).first, const Offset(0, 1000));
+    await tester.pumpAndSettle();
+    expect(items, isEmpty);
+    expect(find.text('已攝取 0 kcal'), findsOneWidget);
+    expect(find.text('已攝取 0 g'), findsOneWidget);
+  });
+
+  testWidgets('Failed cloud meal deletion keeps the item visible', (
+    WidgetTester tester,
+  ) async {
+    final item = MealItem(
+      cloudRecordId: '33333333-3333-4333-8333-333333333333',
+      foodCloudId: '22222222-2222-4222-8222-222222222222',
+      date: '2026-07-24',
+      mealType: 'breakfast',
+      servings: 1,
+      foodName: '保留的餐點',
+      calories: 100,
+      protein: 10,
+    );
+    final repository = FakeMealRepository(
+      loadMealItems: (date, mealType) async =>
+          mealType == 'breakfast' ? [item] : [],
+      deleteRecord: (_) async {
+        throw const MealRepositoryException(
+          MealRepositoryFailureKind.network,
+          '無法連線至雲端服務，請確認網路後再試。',
+        );
+      },
+    );
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: HomePage(
+          foodRepository: FakeFoodRepository(),
+          mealRepository: repository,
+          weightRepository: FakeWeightRepository(),
+          nutritionGoalRepository: FakeNutritionGoalRepository(),
+          localProfileDataEnabled: false,
+          todayOverride: DateTime(2026, 7, 24),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    await tester.ensureVisible(find.byTooltip('刪除餐點'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byTooltip('刪除餐點'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('刪除'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('保留的餐點'), findsOneWidget);
+    expect(find.text('無法連線至雲端服務，請確認網路後再試。'), findsOneWidget);
   });
 
   testWidgets('Past dates are locked, can unlock, and relock after switching', (

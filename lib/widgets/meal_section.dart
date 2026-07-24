@@ -15,7 +15,6 @@ class MealSection extends StatelessWidget {
   final List<MealItem> items;
   final Future<void> Function() onMealAdded;
   final Future<void> Function(MealItem item) onDelete;
-  final bool mealActionsEnabled;
 
   const MealSection({
     super.key,
@@ -28,7 +27,6 @@ class MealSection extends StatelessWidget {
     required this.items,
     required this.onMealAdded,
     required this.onDelete,
-    this.mealActionsEnabled = true,
   });
 
   String _formatNumber(num value) {
@@ -107,7 +105,6 @@ class MealSection extends StatelessWidget {
                           date: date,
                           foodRepository: foodRepository,
                           mealRepository: mealRepository,
-                          mealActionsEnabled: mealActionsEnabled,
                         ),
                       ),
                     );

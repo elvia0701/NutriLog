@@ -16,6 +16,7 @@ import 'repositories/sqlite_meal_repository.dart';
 import 'repositories/sqlite_nutrition_goal_repository.dart';
 import 'repositories/sqlite_weight_repository.dart';
 import 'repositories/supabase_food_repository.dart';
+import 'repositories/supabase_meal_repository.dart';
 import 'repositories/weight_repository.dart';
 import 'theme/app_theme.dart';
 
@@ -43,10 +44,12 @@ Future<void> main() async {
       foodRepository: kIsWeb
           ? SupabaseFoodRepository(supabaseClient)
           : SqliteFoodRepository(databaseHelper),
-      mealRepository: SqliteMealRepository(databaseHelper),
+      mealRepository: kIsWeb
+          ? SupabaseMealRepository(supabaseClient)
+          : SqliteMealRepository(databaseHelper),
       weightRepository: SqliteWeightRepository(databaseHelper),
       nutritionGoalRepository: SqliteNutritionGoalRepository(databaseHelper),
-      mealActionsEnabled: !kIsWeb,
+      localProfileDataEnabled: !kIsWeb,
     ),
   );
 }
@@ -57,7 +60,7 @@ class NutriLogApp extends StatelessWidget {
   final MealRepository mealRepository;
   final WeightRepository weightRepository;
   final NutritionGoalRepository nutritionGoalRepository;
-  final bool mealActionsEnabled;
+  final bool localProfileDataEnabled;
 
   const NutriLogApp({
     super.key,
@@ -66,7 +69,7 @@ class NutriLogApp extends StatelessWidget {
     required this.mealRepository,
     required this.weightRepository,
     required this.nutritionGoalRepository,
-    this.mealActionsEnabled = true,
+    this.localProfileDataEnabled = true,
   });
 
   @override
@@ -83,7 +86,7 @@ class NutriLogApp extends StatelessWidget {
           weightRepository: weightRepository,
           nutritionGoalRepository: nutritionGoalRepository,
           authService: authService,
-          mealActionsEnabled: mealActionsEnabled,
+          localProfileDataEnabled: localProfileDataEnabled,
         ),
       ),
     );

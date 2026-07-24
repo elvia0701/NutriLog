@@ -1,8 +1,10 @@
 class MealRecord {
   final int? id;
+  final String? cloudId;
   final String date;
   final String mealType;
-  final int foodId;
+  final int? foodId;
+  final String? foodCloudId;
   final double servings;
   final String foodNameSnapshot;
   final double caloriesSnapshot;
@@ -12,9 +14,11 @@ class MealRecord {
 
   MealRecord({
     this.id,
+    this.cloudId,
     required this.date,
     required this.mealType,
-    required this.foodId,
+    this.foodId,
+    this.foodCloudId,
     required this.servings,
     required this.foodNameSnapshot,
     required this.caloriesSnapshot,
@@ -22,6 +26,36 @@ class MealRecord {
     required this.carbsSnapshot,
     required this.fatSnapshot,
   });
+
+  MealRecord copyWith({
+    int? id,
+    String? cloudId,
+    String? date,
+    String? mealType,
+    int? foodId,
+    String? foodCloudId,
+    double? servings,
+    String? foodNameSnapshot,
+    double? caloriesSnapshot,
+    double? proteinSnapshot,
+    double? carbsSnapshot,
+    double? fatSnapshot,
+  }) {
+    return MealRecord(
+      id: id ?? this.id,
+      cloudId: cloudId ?? this.cloudId,
+      date: date ?? this.date,
+      mealType: mealType ?? this.mealType,
+      foodId: foodId ?? this.foodId,
+      foodCloudId: foodCloudId ?? this.foodCloudId,
+      servings: servings ?? this.servings,
+      foodNameSnapshot: foodNameSnapshot ?? this.foodNameSnapshot,
+      caloriesSnapshot: caloriesSnapshot ?? this.caloriesSnapshot,
+      proteinSnapshot: proteinSnapshot ?? this.proteinSnapshot,
+      carbsSnapshot: carbsSnapshot ?? this.carbsSnapshot,
+      fatSnapshot: fatSnapshot ?? this.fatSnapshot,
+    );
+  }
 
   Map<String, dynamic> toMap() {
     return {

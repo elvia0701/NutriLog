@@ -9,8 +9,9 @@ class SqliteMealRepository implements MealRepository {
   const SqliteMealRepository(this.databaseHelper);
 
   @override
-  Future<int> insertMealRecord(MealRecord mealRecord) {
-    return databaseHelper.insertMealRecord(mealRecord);
+  Future<MealRecord> insertMealRecord(MealRecord mealRecord) async {
+    final id = await databaseHelper.insertMealRecord(mealRecord);
+    return mealRecord.copyWith(id: id);
   }
 
   @override
@@ -40,7 +41,14 @@ class SqliteMealRepository implements MealRepository {
   }
 
   @override
-  Future<void> deleteMealRecord(int id) async {
+  Future<void> deleteMealRecord(MealItem item) async {
+    final id = item.recordId;
+    if (id == null) {
+      throw const MealRepositoryException(
+        MealRepositoryFailureKind.invalidData,
+        '餐點識別資料不完整，請重新載入後再試。',
+      );
+    }
     await databaseHelper.deleteMealRecord(id);
   }
 }

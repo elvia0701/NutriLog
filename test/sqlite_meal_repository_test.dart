@@ -68,7 +68,7 @@ void main() {
     final foodId = await databaseHelper.insertFood(
       Food(name: '香蕉', calories: 90, protein: 1.1),
     );
-    final recordId = await repository.insertMealRecord(
+    await repository.insertMealRecord(
       MealRecord(
         date: '2026-07-20',
         mealType: 'snack',
@@ -89,7 +89,11 @@ void main() {
       hasLength(1),
     );
 
-    await repository.deleteMealRecord(recordId);
+    final item = (await repository.getMealItemsByDateAndMealType(
+      '2026-07-20',
+      'snack',
+    )).single;
+    await repository.deleteMealRecord(item);
     expect(await repository.getAllMealRecords(), isEmpty);
   });
 }

@@ -11,7 +11,6 @@ class FoodDatabasePage extends StatefulWidget {
   final String date;
   final FoodRepository foodRepository;
   final MealRepository mealRepository;
-  final bool mealActionsEnabled;
 
   const FoodDatabasePage({
     super.key,
@@ -19,7 +18,6 @@ class FoodDatabasePage extends StatefulWidget {
     required this.date,
     required this.foodRepository,
     required this.mealRepository,
-    this.mealActionsEnabled = true,
   });
 
   @override
@@ -61,7 +59,7 @@ class _FoodDatabasePageState extends State<FoodDatabasePage> {
     return widget.foodRepository.updateFood(food);
   }
 
-  Future<int> _createMealRecord(MealRecord mealRecord) {
+  Future<MealRecord> _createMealRecord(MealRecord mealRecord) {
     return widget.mealRepository.insertMealRecord(mealRecord);
   }
 
@@ -119,18 +117,18 @@ class _FoodDatabasePageState extends State<FoodDatabasePage> {
     required Food food,
     required double servings,
   }) async {
-    final foodId = food.id;
-    if (foodId == null) {
-      throw const FoodRepositoryException(
-        FoodRepositoryFailureKind.invalidData,
-        '網頁版餐點同步尚未完成，目前可管理食物資料，但還不能加入餐點。',
+    if (food.id == null && food.cloudId == null) {
+      throw const MealRepositoryException(
+        MealRepositoryFailureKind.invalidData,
+        '食品識別資料不完整，請重新載入食品後再試。',
       );
     }
     await _createMealRecord(
       MealRecord(
         date: widget.date,
         mealType: widget.mealType,
-        foodId: foodId,
+        foodId: food.id,
+        foodCloudId: food.cloudId,
         servings: servings,
         foodNameSnapshot: food.name,
         caloriesSnapshot: food.calories.toDouble(),
@@ -142,41 +140,33 @@ class _FoodDatabasePageState extends State<FoodDatabasePage> {
   }
 
   Future<void> _selectFood(Food food) async {
-    if (!widget.mealActionsEnabled) {
-      _showMessage('網頁版餐點同步尚未完成，目前可管理食物資料，但還不能加入餐點。');
-      return;
-    }
-    if (food.id == null) return;
+    if (food.id == null && food.cloudId == null) return;
 
     final servings = await _askForServings(food);
     if (servings == null) return;
 
-    await _saveMealRecord(food: food, servings: servings);
-    if (!mounted) return;
-    Navigator.pop(context, true);
+    var saved = false;
+    await _runMutation(() async {
+      await _saveMealRecord(food: food, servings: servings);
+      saved = true;
+    });
+    if (saved && mounted) Navigator.pop(context, true);
   }
 
   Future<void> _createAndAddFood() async {
     final result = await Navigator.push<AddFoodResult>(
       context,
       MaterialPageRoute(
-        builder: (context) => AddFoodPage(
-          mealType: widget.mealActionsEnabled ? widget.mealType : null,
-        ),
+        builder: (context) => AddFoodPage(mealType: widget.mealType),
       ),
     );
     if (result == null) return;
 
     await _runMutation(() async {
       final createdFood = await _createFood(result.food);
-      if (widget.mealActionsEnabled) {
-        await _saveMealRecord(food: createdFood, servings: result.servings);
-        if (!mounted) return;
-        Navigator.pop(context, true);
-      } else {
-        await _loadFoods();
-        if (mounted) _showMessage('食物已建立。');
-      }
+      await _saveMealRecord(food: createdFood, servings: result.servings);
+      if (!mounted) return;
+      Navigator.pop(context, true);
     });
   }
 
@@ -282,6 +272,7 @@ class _FoodDatabasePageState extends State<FoodDatabasePage> {
 
   String _messageForError(Object? error) {
     if (error is FoodRepositoryException) return error.message;
+    if (error is MealRepositoryException) return error.message;
     return '無法存取食物資料，請稍後再試。';
   }
 
