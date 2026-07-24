@@ -11,18 +11,25 @@ class SqliteFoodRepository implements FoodRepository {
   Future<List<Food>> getFoods() => databaseHelper.getFoods();
 
   @override
-  Future<int> insertFood(Food food) => databaseHelper.insertFood(food);
+  Future<Food> insertFood(Food food) async {
+    final id = await databaseHelper.insertFood(food);
+    return food.copyWith(id: id);
+  }
 
   @override
   Future<int> updateFood(Food food) => databaseHelper.updateFood(food);
 
   @override
-  Future<int> getFoodReferenceCount(int foodId) {
+  Future<int> getFoodReferenceCount(Food food) {
+    final foodId = food.id;
+    if (foodId == null) return Future.value(0);
     return databaseHelper.getFoodReferenceCount(foodId);
   }
 
   @override
-  Future<FoodRemovalResult> removeFood(int foodId) {
+  Future<FoodRemovalResult> removeFood(Food food) {
+    final foodId = food.id;
+    if (foodId == null) return Future.value(FoodRemovalResult.notFound);
     return databaseHelper.removeFood(foodId);
   }
 }

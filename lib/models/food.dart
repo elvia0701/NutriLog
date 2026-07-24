@@ -1,5 +1,6 @@
 class Food {
   final int? id;
+  final String? cloudId;
   final String name;
   final int calories;
   final double protein;
@@ -10,6 +11,7 @@ class Food {
 
   Food({
     this.id,
+    this.cloudId,
     required this.name,
     required this.calories,
     required this.protein,
@@ -18,6 +20,30 @@ class Food {
     this.favorite = false,
     this.isArchived = false,
   });
+
+  Food copyWith({
+    int? id,
+    String? cloudId,
+    String? name,
+    int? calories,
+    double? protein,
+    double? carbs,
+    double? fat,
+    bool? favorite,
+    bool? isArchived,
+  }) {
+    return Food(
+      id: id ?? this.id,
+      cloudId: cloudId ?? this.cloudId,
+      name: name ?? this.name,
+      calories: calories ?? this.calories,
+      protein: protein ?? this.protein,
+      carbs: carbs ?? this.carbs,
+      fat: fat ?? this.fat,
+      favorite: favorite ?? this.favorite,
+      isArchived: isArchived ?? this.isArchived,
+    );
+  }
 
   Map<String, dynamic> toMap() {
     return {

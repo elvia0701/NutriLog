@@ -2,14 +2,33 @@ import '../models/food.dart';
 
 enum FoodRemovalResult { deleted, archived, notFound }
 
+enum FoodRepositoryFailureKind {
+  unauthenticated,
+  network,
+  permissionDenied,
+  invalidData,
+  notFound,
+  unknown,
+}
+
+class FoodRepositoryException implements Exception {
+  final FoodRepositoryFailureKind kind;
+  final String message;
+
+  const FoodRepositoryException(this.kind, this.message);
+
+  @override
+  String toString() => message;
+}
+
 abstract interface class FoodRepository {
   Future<List<Food>> getFoods();
 
-  Future<int> insertFood(Food food);
+  Future<Food> insertFood(Food food);
 
   Future<int> updateFood(Food food);
 
-  Future<int> getFoodReferenceCount(int foodId);
+  Future<int> getFoodReferenceCount(Food food);
 
-  Future<FoodRemovalResult> removeFood(int foodId);
+  Future<FoodRemovalResult> removeFood(Food food);
 }

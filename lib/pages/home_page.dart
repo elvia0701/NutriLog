@@ -27,6 +27,7 @@ class HomePage extends StatefulWidget {
   mealItemsLoader;
   final Future<void> Function(int recordId)? mealRecordDeleter;
   final AuthService? authService;
+  final bool mealActionsEnabled;
 
   const HomePage({
     super.key,
@@ -38,6 +39,7 @@ class HomePage extends StatefulWidget {
     this.mealItemsLoader,
     this.mealRecordDeleter,
     this.authService,
+    this.mealActionsEnabled = true,
   });
 
   @override
@@ -201,6 +203,30 @@ class _HomePageState extends State<HomePage> {
         builder: (context) => SettingsPage(authService: authService),
       ),
     );
+  }
+
+  Future<void> _createReusableFood() async {
+    final result = await Navigator.push<AddFoodResult>(
+      context,
+      MaterialPageRoute(builder: (context) => const AddFoodPage()),
+    );
+    if (result == null) return;
+
+    try {
+      await widget.foodRepository.insertFood(result.food);
+      if (!mounted) return;
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('食物已建立。')));
+    } catch (error) {
+      if (!mounted) return;
+      final message = error is FoodRepositoryException
+          ? error.message
+          : '無法建立食物，請稍後再試。';
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text(message)));
+    }
   }
 
   Future<void> _changeDate(DateTime value) async {
@@ -409,6 +435,7 @@ class _HomePageState extends State<HomePage> {
                       items: breakfastItems,
                       onMealAdded: loadMealItems,
                       onDelete: deleteMealItem,
+                      mealActionsEnabled: widget.mealActionsEnabled,
                     ),
                     MealSection(
                       title: '午餐',
@@ -420,6 +447,7 @@ class _HomePageState extends State<HomePage> {
                       items: lunchItems,
                       onMealAdded: loadMealItems,
                       onDelete: deleteMealItem,
+                      mealActionsEnabled: widget.mealActionsEnabled,
                     ),
 
                     MealSection(
@@ -432,6 +460,7 @@ class _HomePageState extends State<HomePage> {
                       items: dinnerItems,
                       onMealAdded: loadMealItems,
                       onDelete: deleteMealItem,
+                      mealActionsEnabled: widget.mealActionsEnabled,
                     ),
 
                     MealSection(
@@ -444,6 +473,7 @@ class _HomePageState extends State<HomePage> {
                       items: snackItems,
                       onMealAdded: loadMealItems,
                       onDelete: deleteMealItem,
+                      mealActionsEnabled: widget.mealActionsEnabled,
                     ),
                   ],
                 ),
@@ -455,15 +485,7 @@ class _HomePageState extends State<HomePage> {
 
       floatingActionButton: FloatingActionButton.extended(
         tooltip: '建立可重複使用的食物',
-        onPressed: () async {
-          final AddFoodResult? result = await Navigator.push(
-            context,
-            MaterialPageRoute(builder: (context) => const AddFoodPage()),
-          );
-          if (result != null) {
-            await widget.foodRepository.insertFood(result.food);
-          }
-        },
+        onPressed: _createReusableFood,
         icon: const Icon(Icons.restaurant_menu),
         label: const Text('建立食物'),
       ),

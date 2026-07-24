@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
@@ -14,6 +15,7 @@ import 'repositories/sqlite_food_repository.dart';
 import 'repositories/sqlite_meal_repository.dart';
 import 'repositories/sqlite_nutrition_goal_repository.dart';
 import 'repositories/sqlite_weight_repository.dart';
+import 'repositories/supabase_food_repository.dart';
 import 'repositories/weight_repository.dart';
 import 'theme/app_theme.dart';
 
@@ -33,14 +35,18 @@ Future<void> main() async {
     publishableKey: supabaseConfig.anonKey,
   );
   final databaseHelper = DatabaseHelper.instance;
-  final authService = SupabaseAuthService(Supabase.instance.client);
+  final supabaseClient = Supabase.instance.client;
+  final authService = SupabaseAuthService(supabaseClient);
   runApp(
     NutriLogApp(
       authService: authService,
-      foodRepository: SqliteFoodRepository(databaseHelper),
+      foodRepository: kIsWeb
+          ? SupabaseFoodRepository(supabaseClient)
+          : SqliteFoodRepository(databaseHelper),
       mealRepository: SqliteMealRepository(databaseHelper),
       weightRepository: SqliteWeightRepository(databaseHelper),
       nutritionGoalRepository: SqliteNutritionGoalRepository(databaseHelper),
+      mealActionsEnabled: !kIsWeb,
     ),
   );
 }
@@ -51,6 +57,7 @@ class NutriLogApp extends StatelessWidget {
   final MealRepository mealRepository;
   final WeightRepository weightRepository;
   final NutritionGoalRepository nutritionGoalRepository;
+  final bool mealActionsEnabled;
 
   const NutriLogApp({
     super.key,
@@ -59,6 +66,7 @@ class NutriLogApp extends StatelessWidget {
     required this.mealRepository,
     required this.weightRepository,
     required this.nutritionGoalRepository,
+    this.mealActionsEnabled = true,
   });
 
   @override
@@ -75,6 +83,7 @@ class NutriLogApp extends StatelessWidget {
           weightRepository: weightRepository,
           nutritionGoalRepository: nutritionGoalRepository,
           authService: authService,
+          mealActionsEnabled: mealActionsEnabled,
         ),
       ),
     );

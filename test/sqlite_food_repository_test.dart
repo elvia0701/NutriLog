@@ -21,12 +21,14 @@ void main() {
   tearDown(() => databaseHelper.close());
 
   test('creates, updates, lists, and keeps same-name foods distinct', () async {
-    final firstId = await repository.insertFood(
+    final first = await repository.insertFood(
       Food(name: '優格', calories: 100, protein: 8, favorite: true),
     );
-    final secondId = await repository.insertFood(
+    final second = await repository.insertFood(
       Food(name: '優格', calories: 0, protein: 0, carbs: 0, fat: 0),
     );
+    final firstId = first.id;
+    final secondId = second.id;
 
     expect(firstId, isNot(secondId));
     expect(await repository.getFoods(), hasLength(2));
@@ -55,14 +57,15 @@ void main() {
   });
 
   test('deletes unused food and archives referenced food safely', () async {
-    final unusedId = await repository.insertFood(
+    final unused = await repository.insertFood(
       Food(name: '未使用', calories: 10, protein: 1),
     );
-    expect(await repository.removeFood(unusedId), FoodRemovalResult.deleted);
+    expect(await repository.removeFood(unused), FoodRemovalResult.deleted);
 
-    final referencedId = await repository.insertFood(
+    final referenced = await repository.insertFood(
       Food(name: '已使用', calories: 70, protein: 6),
     );
+    final referencedId = referenced.id!;
     await databaseHelper.insertMealRecord(
       MealRecord(
         date: '2026-07-19',
@@ -77,11 +80,8 @@ void main() {
       ),
     );
 
-    expect(await repository.getFoodReferenceCount(referencedId), 1);
-    expect(
-      await repository.removeFood(referencedId),
-      FoodRemovalResult.archived,
-    );
+    expect(await repository.getFoodReferenceCount(referenced), 1);
+    expect(await repository.removeFood(referenced), FoodRemovalResult.archived);
     expect(await repository.getFoods(), isEmpty);
     expect(await databaseHelper.getAllMealRecords(), hasLength(1));
   });

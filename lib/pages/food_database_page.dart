@@ -1,4 +1,3 @@
-import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 
 import '../models/food.dart';
@@ -12,7 +11,7 @@ class FoodDatabasePage extends StatefulWidget {
   final String date;
   final FoodRepository foodRepository;
   final MealRepository mealRepository;
-  final bool? isWebOverride;
+  final bool mealActionsEnabled;
 
   const FoodDatabasePage({
     super.key,
@@ -20,7 +19,7 @@ class FoodDatabasePage extends StatefulWidget {
     required this.date,
     required this.foodRepository,
     required this.mealRepository,
-    this.isWebOverride,
+    this.mealActionsEnabled = true,
   });
 
   @override
@@ -31,9 +30,9 @@ class _FoodDatabasePageState extends State<FoodDatabasePage> {
   List<Food> _foods = [];
   String _query = '';
   bool _isLoading = true;
+  bool _isMutating = false;
   Object? _loadError;
-
-  bool get _isWeb => widget.isWebOverride ?? kIsWeb;
+  String? _loadErrorMessage;
 
   List<Food> get _filteredFoods {
     final query = _query.trim().toLowerCase();
@@ -54,7 +53,7 @@ class _FoodDatabasePageState extends State<FoodDatabasePage> {
     return widget.foodRepository.getFoods();
   }
 
-  Future<int> _createFood(Food food) {
+  Future<Food> _createFood(Food food) {
     return widget.foodRepository.insertFood(food);
   }
 
@@ -66,12 +65,12 @@ class _FoodDatabasePageState extends State<FoodDatabasePage> {
     return widget.mealRepository.insertMealRecord(mealRecord);
   }
 
-  Future<int> _getFoodReferenceCount(int foodId) {
-    return widget.foodRepository.getFoodReferenceCount(foodId);
+  Future<int> _getFoodReferenceCount(Food food) {
+    return widget.foodRepository.getFoodReferenceCount(food);
   }
 
-  Future<FoodRemovalResult> _removeFood(int foodId) {
-    return widget.foodRepository.removeFood(foodId);
+  Future<FoodRemovalResult> _removeFood(Food food) {
+    return widget.foodRepository.removeFood(food);
   }
 
   Future<void> _loadFoods() async {
@@ -79,6 +78,7 @@ class _FoodDatabasePageState extends State<FoodDatabasePage> {
       setState(() {
         _isLoading = true;
         _loadError = null;
+        _loadErrorMessage = null;
       });
     }
 
@@ -97,6 +97,7 @@ class _FoodDatabasePageState extends State<FoodDatabasePage> {
             _foods = foods;
           }
           _loadError = loadError;
+          _loadErrorMessage = _messageForError(loadError);
           _isLoading = false;
         });
       }
@@ -119,7 +120,12 @@ class _FoodDatabasePageState extends State<FoodDatabasePage> {
     required double servings,
   }) async {
     final foodId = food.id;
-    if (foodId == null) return;
+    if (foodId == null) {
+      throw const FoodRepositoryException(
+        FoodRepositoryFailureKind.invalidData,
+        '網頁版餐點同步尚未完成，目前可管理食物資料，但還不能加入餐點。',
+      );
+    }
     await _createMealRecord(
       MealRecord(
         date: widget.date,
@@ -136,8 +142,11 @@ class _FoodDatabasePageState extends State<FoodDatabasePage> {
   }
 
   Future<void> _selectFood(Food food) async {
-    final foodId = food.id;
-    if (foodId == null) return;
+    if (!widget.mealActionsEnabled) {
+      _showMessage('網頁版餐點同步尚未完成，目前可管理食物資料，但還不能加入餐點。');
+      return;
+    }
+    if (food.id == null) return;
 
     final servings = await _askForServings(food);
     if (servings == null) return;
@@ -151,25 +160,24 @@ class _FoodDatabasePageState extends State<FoodDatabasePage> {
     final result = await Navigator.push<AddFoodResult>(
       context,
       MaterialPageRoute(
-        builder: (context) => AddFoodPage(mealType: widget.mealType),
+        builder: (context) => AddFoodPage(
+          mealType: widget.mealActionsEnabled ? widget.mealType : null,
+        ),
       ),
     );
     if (result == null) return;
 
-    final foodId = await _createFood(result.food);
-    final createdFood = Food(
-      id: foodId,
-      name: result.food.name,
-      calories: result.food.calories,
-      protein: result.food.protein,
-      carbs: result.food.carbs,
-      fat: result.food.fat,
-      favorite: result.food.favorite,
-      isArchived: result.food.isArchived,
-    );
-    await _saveMealRecord(food: createdFood, servings: result.servings);
-    if (!mounted) return;
-    Navigator.pop(context, true);
+    await _runMutation(() async {
+      final createdFood = await _createFood(result.food);
+      if (widget.mealActionsEnabled) {
+        await _saveMealRecord(food: createdFood, servings: result.servings);
+        if (!mounted) return;
+        Navigator.pop(context, true);
+      } else {
+        await _loadFoods();
+        if (mounted) _showMessage('食物已建立。');
+      }
+    });
   }
 
   Future<void> _editFood(Food food) async {
@@ -178,15 +186,32 @@ class _FoodDatabasePageState extends State<FoodDatabasePage> {
       MaterialPageRoute(builder: (context) => AddFoodPage(initialFood: food)),
     );
     if (result == null) return;
-    await _updateFood(result.food);
-    await _loadFoods();
+    await _runMutation(() async {
+      await _updateFood(result.food);
+      await _loadFoods();
+      if (mounted) _showMessage('食物已更新。');
+    });
+  }
+
+  Future<void> _toggleFavorite(Food food) async {
+    await _runMutation(() async {
+      await _updateFood(food.copyWith(favorite: !food.favorite));
+      await _loadFoods();
+    });
   }
 
   Future<void> _confirmAndRemoveFood(Food food) async {
-    final foodId = food.id;
-    if (foodId == null) return;
+    if (food.id == null && food.cloudId == null) return;
 
-    final referenceCount = await _getFoodReferenceCount(foodId);
+    int referenceCount;
+    try {
+      referenceCount = await _getFoodReferenceCount(food);
+    } catch (error, stackTrace) {
+      debugPrint('FoodDatabasePage failed to check food references: $error');
+      debugPrintStack(stackTrace: stackTrace);
+      if (mounted) _showMessage(_messageForError(error));
+      return;
+    }
     if (!mounted) return;
     final hasReferences = referenceCount > 0;
 
@@ -214,8 +239,11 @@ class _FoodDatabasePageState extends State<FoodDatabasePage> {
     );
     if (confirmed != true) return;
 
-    final result = await _removeFood(foodId);
-    if (!mounted) return;
+    FoodRemovalResult? result;
+    await _runMutation(() async {
+      result = await _removeFood(food);
+    });
+    if (!mounted || result == null) return;
 
     if (result == FoodRemovalResult.notFound) {
       ScaffoldMessenger.of(
@@ -226,7 +254,9 @@ class _FoodDatabasePageState extends State<FoodDatabasePage> {
     }
 
     setState(() {
-      _foods.removeWhere((item) => item.id == foodId);
+      _foods.removeWhere(
+        (item) => item.id == food.id && item.cloudId == food.cloudId,
+      );
     });
 
     if (result == FoodRemovalResult.archived) {
@@ -234,6 +264,31 @@ class _FoodDatabasePageState extends State<FoodDatabasePage> {
         context,
       ).showSnackBar(const SnackBar(content: Text('食物已封存，歷史餐點仍會保留。')));
     }
+  }
+
+  Future<void> _runMutation(Future<void> Function() action) async {
+    if (_isMutating) return;
+    if (mounted) setState(() => _isMutating = true);
+    try {
+      await action();
+    } catch (error, stackTrace) {
+      debugPrint('FoodDatabasePage food operation failed: $error');
+      debugPrintStack(stackTrace: stackTrace);
+      if (mounted) _showMessage(_messageForError(error));
+    } finally {
+      if (mounted) setState(() => _isMutating = false);
+    }
+  }
+
+  String _messageForError(Object? error) {
+    if (error is FoodRepositoryException) return error.message;
+    return '無法存取食物資料，請稍後再試。';
+  }
+
+  void _showMessage(String message) {
+    ScaffoldMessenger.of(
+      context,
+    ).showSnackBar(SnackBar(content: Text(message)));
   }
 
   Widget _buildEmptyState() {
@@ -269,10 +324,7 @@ class _FoodDatabasePageState extends State<FoodDatabasePage> {
   }
 
   Widget _buildLoadError() {
-    final title = _isWeb ? '網頁版資料同步功能尚未完成' : '無法載入食物資料';
-    final message = _isWeb
-        ? '目前食物資料仍使用行動裝置的本機 SQLite，Chrome 尚無法讀取。'
-        : '讀取本機食物資料時發生錯誤，請重新載入。';
+    final message = _loadErrorMessage ?? '無法載入食物資料，請稍後再試。';
     return Center(
       child: Padding(
         padding: const EdgeInsets.all(24),
@@ -286,7 +338,7 @@ class _FoodDatabasePageState extends State<FoodDatabasePage> {
             ),
             const SizedBox(height: 16),
             Text(
-              title,
+              '無法載入食物資料',
               textAlign: TextAlign.center,
               style: Theme.of(context).textTheme.titleLarge,
             ),
@@ -325,7 +377,7 @@ class _FoodDatabasePageState extends State<FoodDatabasePage> {
             width: double.infinity,
             child: FilledButton.icon(
               key: const Key('createNewFoodButton'),
-              onPressed: _createAndAddFood,
+              onPressed: _isMutating ? null : _createAndAddFood,
               icon: const Icon(Icons.add),
               label: const Text('建立新食物'),
             ),
@@ -352,16 +404,38 @@ class _FoodDatabasePageState extends State<FoodDatabasePage> {
                           mainAxisSize: MainAxisSize.min,
                           children: [
                             IconButton(
-                              key: ValueKey('edit_food_${food.id}'),
-                              onPressed: food.id == null
+                              key: ValueKey(
+                                'favorite_food_${food.id ?? food.cloudId}',
+                              ),
+                              onPressed: _isMutating
+                                  ? null
+                                  : () => _toggleFavorite(food),
+                              tooltip: food.favorite ? '取消常用' : '標記為常用',
+                              icon: Icon(
+                                food.favorite
+                                    ? Icons.star
+                                    : Icons.star_border_outlined,
+                              ),
+                            ),
+                            IconButton(
+                              key: ValueKey(
+                                'edit_food_${food.id ?? food.cloudId}',
+                              ),
+                              onPressed:
+                                  _isMutating ||
+                                      (food.id == null && food.cloudId == null)
                                   ? null
                                   : () => _editFood(food),
                               tooltip: '編輯食物',
                               icon: const Icon(Icons.edit_outlined),
                             ),
                             IconButton(
-                              key: ValueKey('delete_food_${food.id}'),
-                              onPressed: food.id == null
+                              key: ValueKey(
+                                'delete_food_${food.id ?? food.cloudId}',
+                              ),
+                              onPressed:
+                                  _isMutating ||
+                                      (food.id == null && food.cloudId == null)
                                   ? null
                                   : () => _confirmAndRemoveFood(food),
                               tooltip: '移除食物',

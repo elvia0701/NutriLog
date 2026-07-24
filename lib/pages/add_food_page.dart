@@ -102,6 +102,7 @@ class _AddFoodPageState extends State<AddFoodPage> {
     final result = AddFoodResult(
       food: Food(
         id: original?.id,
+        cloudId: original?.cloudId,
         name: nameController.text.trim(),
         calories: int.parse(caloriesController.text.trim()),
         protein: double.parse(proteinController.text.trim()),
