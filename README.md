@@ -33,6 +33,22 @@ flutter analyze
 flutter test
 ```
 
+## Supabase Auth 設定
+
+啟動 App 時必須透過 `--dart-define` 提供 Supabase 專案 URL 與 anon
+（或 publishable）key。請勿將實際金鑰寫入或提交到 repository。
+
+```sh
+flutter run --dart-define=SUPABASE_URL=https://YOUR_PROJECT.supabase.co --dart-define=SUPABASE_ANON_KEY=YOUR_ANON_KEY
+```
+
+也可以將相同兩個值放在已被 `.gitignore` 排除的
+`supabase.local.json`，再執行：
+
+```sh
+flutter run -d chrome --dart-define-from-file=supabase.local.json
+```
+
 ## 專案狀態
 
 目前已完成每日餐點紀錄 MVP，包含份數計算、當日營養摘要及刪除紀錄。

@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'add_food_page.dart';
 
+import '../auth/auth_service.dart';
 import '../widgets/dashboard_summary.dart';
 import '../widgets/meal_section.dart';
 import '../models/meal_item.dart';
@@ -14,6 +15,7 @@ import '../utils/local_date.dart';
 import '../widgets/weight_entry_dialog.dart';
 import 'weight_history_page.dart';
 import 'nutrition_goal_page.dart';
+import 'settings_page.dart';
 
 class HomePage extends StatefulWidget {
   final FoodRepository foodRepository;
@@ -24,6 +26,7 @@ class HomePage extends StatefulWidget {
   final Future<List<MealItem>> Function(String date, String mealType)?
   mealItemsLoader;
   final Future<void> Function(int recordId)? mealRecordDeleter;
+  final AuthService? authService;
 
   const HomePage({
     super.key,
@@ -34,6 +37,7 @@ class HomePage extends StatefulWidget {
     this.todayOverride,
     this.mealItemsLoader,
     this.mealRecordDeleter,
+    this.authService,
   });
 
   @override
@@ -186,6 +190,17 @@ class _HomePageState extends State<HomePage> {
       ),
     );
     if (changed == true) await loadMealItems();
+  }
+
+  Future<void> _openSettings() async {
+    final authService = widget.authService;
+    if (authService == null) return;
+    await Navigator.push<void>(
+      context,
+      MaterialPageRoute(
+        builder: (context) => SettingsPage(authService: authService),
+      ),
+    );
   }
 
   Future<void> _changeDate(DateTime value) async {
@@ -342,9 +357,22 @@ class _HomePageState extends State<HomePage> {
                     104,
                   ),
                   children: [
-                    Text(
-                      'NutriLog',
-                      style: Theme.of(context).textTheme.headlineMedium,
+                    Row(
+                      children: [
+                        Expanded(
+                          child: Text(
+                            'NutriLog',
+                            style: Theme.of(context).textTheme.headlineMedium,
+                          ),
+                        ),
+                        if (widget.authService != null)
+                          IconButton(
+                            key: const Key('settingsButton'),
+                            onPressed: _openSettings,
+                            tooltip: '設定',
+                            icon: const Icon(Icons.settings_outlined),
+                          ),
+                      ],
                     ),
                     const SizedBox(height: 8),
 

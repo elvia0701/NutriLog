@@ -5,6 +5,8 @@
 // gestures. You can also use WidgetTester to find child widgets in the widget
 // tree, read text, and verify that the values of widget properties are correct.
 
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:fl_chart/fl_chart.dart';
@@ -507,6 +509,72 @@ void main() {
 
     expect(find.text('找不到食物'), findsOneWidget);
     expect(find.text('建立新食物'), findsWidgets);
+  });
+
+  testWidgets('Food database ends loading and displays loaded foods', (
+    WidgetTester tester,
+  ) async {
+    final pendingFoods = Completer<List<Food>>();
+    await tester.pumpWidget(
+      MaterialApp(
+        home: FoodDatabasePage(
+          mealType: 'breakfast',
+          date: '2026-07-20',
+          foodRepository: FakeFoodRepository(
+            loadFoods: () => pendingFoods.future,
+          ),
+          mealRepository: FakeMealRepository(),
+        ),
+      ),
+    );
+
+    expect(find.byType(CircularProgressIndicator), findsOneWidget);
+    pendingFoods.complete([
+      Food(id: 1, name: '香蕉', calories: 90, protein: 1.1),
+    ]);
+    await tester.pumpAndSettle();
+
+    expect(find.byType(CircularProgressIndicator), findsNothing);
+    expect(find.text('香蕉'), findsOneWidget);
+  });
+
+  testWidgets('Food database shows web error and can retry successfully', (
+    WidgetTester tester,
+  ) async {
+    var loadCalls = 0;
+    await tester.pumpWidget(
+      MaterialApp(
+        home: FoodDatabasePage(
+          mealType: 'breakfast',
+          date: '2026-07-20',
+          foodRepository: FakeFoodRepository(
+            loadFoods: () async {
+              loadCalls += 1;
+              if (loadCalls == 1) {
+                throw StateError('databaseFactory not initialized');
+              }
+              return [Food(id: 2, name: '蘋果', calories: 95, protein: 0.5)];
+            },
+          ),
+          mealRepository: FakeMealRepository(),
+          isWebOverride: true,
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.byType(CircularProgressIndicator), findsNothing);
+    expect(find.text('網頁版資料同步功能尚未完成'), findsOneWidget);
+    expect(find.text('目前食物資料仍使用行動裝置的本機 SQLite，Chrome 尚無法讀取。'), findsOneWidget);
+    expect(find.byKey(const Key('retryLoadFoodsButton')), findsOneWidget);
+    expect(find.byKey(const Key('foodSearchField')), findsNothing);
+
+    await tester.tap(find.byKey(const Key('retryLoadFoodsButton')));
+    await tester.pumpAndSettle();
+
+    expect(loadCalls, 2);
+    expect(find.text('網頁版資料同步功能尚未完成'), findsNothing);
+    expect(find.text('蘋果'), findsOneWidget);
   });
 
   testWidgets('Empty food database offers first food creation', (

@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 
 import '../models/food.dart';
@@ -11,6 +12,7 @@ class FoodDatabasePage extends StatefulWidget {
   final String date;
   final FoodRepository foodRepository;
   final MealRepository mealRepository;
+  final bool? isWebOverride;
 
   const FoodDatabasePage({
     super.key,
@@ -18,6 +20,7 @@ class FoodDatabasePage extends StatefulWidget {
     required this.date,
     required this.foodRepository,
     required this.mealRepository,
+    this.isWebOverride,
   });
 
   @override
@@ -28,6 +31,9 @@ class _FoodDatabasePageState extends State<FoodDatabasePage> {
   List<Food> _foods = [];
   String _query = '';
   bool _isLoading = true;
+  Object? _loadError;
+
+  bool get _isWeb => widget.isWebOverride ?? kIsWeb;
 
   List<Food> get _filteredFoods {
     final query = _query.trim().toLowerCase();
@@ -69,13 +75,32 @@ class _FoodDatabasePageState extends State<FoodDatabasePage> {
   }
 
   Future<void> _loadFoods() async {
-    final foods = await _getFoods();
-    if (!mounted) return;
+    if (mounted) {
+      setState(() {
+        _isLoading = true;
+        _loadError = null;
+      });
+    }
 
-    setState(() {
-      _foods = foods;
-      _isLoading = false;
-    });
+    List<Food>? foods;
+    Object? loadError;
+    try {
+      foods = await _getFoods();
+    } catch (error, stackTrace) {
+      loadError = error;
+      debugPrint('FoodDatabasePage failed to load foods: $error');
+      debugPrintStack(stackTrace: stackTrace);
+    } finally {
+      if (mounted) {
+        setState(() {
+          if (loadError == null && foods != null) {
+            _foods = foods;
+          }
+          _loadError = loadError;
+          _isLoading = false;
+        });
+      }
+    }
   }
 
   String _formatNumber(num value) {
@@ -243,84 +268,126 @@ class _FoodDatabasePageState extends State<FoodDatabasePage> {
     );
   }
 
-  @override
-  Widget build(BuildContext context) {
-    final filteredFoods = _filteredFoods;
-
-    return Scaffold(
-      appBar: AppBar(title: const Text('食物資料庫')),
-      body: Padding(
-        padding: const EdgeInsets.all(16),
+  Widget _buildLoadError() {
+    final title = _isWeb ? '網頁版資料同步功能尚未完成' : '無法載入食物資料';
+    final message = _isWeb
+        ? '目前食物資料仍使用行動裝置的本機 SQLite，Chrome 尚無法讀取。'
+        : '讀取本機食物資料時發生錯誤，請重新載入。';
+    return Center(
+      child: Padding(
+        padding: const EdgeInsets.all(24),
         child: Column(
+          mainAxisSize: MainAxisSize.min,
           children: [
-            TextField(
-              key: const Key('foodSearchField'),
-              onChanged: (value) => setState(() => _query = value),
-              decoration: const InputDecoration(
-                labelText: '搜尋食物',
-                prefixIcon: Icon(Icons.search),
-                border: OutlineInputBorder(),
-              ),
+            Icon(
+              Icons.cloud_off_outlined,
+              size: 48,
+              color: Theme.of(context).colorScheme.error,
             ),
-            const SizedBox(height: 12),
-            SizedBox(
-              width: double.infinity,
-              child: FilledButton.icon(
-                key: const Key('createNewFoodButton'),
-                onPressed: _createAndAddFood,
-                icon: const Icon(Icons.add),
-                label: const Text('建立新食物'),
-              ),
+            const SizedBox(height: 16),
+            Text(
+              title,
+              textAlign: TextAlign.center,
+              style: Theme.of(context).textTheme.titleLarge,
             ),
-            const SizedBox(height: 12),
-            Expanded(
-              child: _isLoading
-                  ? const Center(child: CircularProgressIndicator())
-                  : _foods.isEmpty
-                  ? _buildEmptyState()
-                  : filteredFoods.isEmpty
-                  ? _buildNoResults()
-                  : ListView.separated(
-                      itemCount: filteredFoods.length,
-                      separatorBuilder: (_, _) => const Divider(height: 1),
-                      itemBuilder: (context, index) {
-                        final food = filteredFoods[index];
-                        return ListTile(
-                          key: ValueKey('food_${food.id}_$index'),
-                          title: Text(food.name),
-                          subtitle: Text(
-                            '每份 ${food.calories} kcal • '
-                            '蛋白質 ${_formatNumber(food.protein)} g',
-                          ),
-                          trailing: Row(
-                            mainAxisSize: MainAxisSize.min,
-                            children: [
-                              IconButton(
-                                key: ValueKey('edit_food_${food.id}'),
-                                onPressed: food.id == null
-                                    ? null
-                                    : () => _editFood(food),
-                                tooltip: '編輯食物',
-                                icon: const Icon(Icons.edit_outlined),
-                              ),
-                              IconButton(
-                                key: ValueKey('delete_food_${food.id}'),
-                                onPressed: food.id == null
-                                    ? null
-                                    : () => _confirmAndRemoveFood(food),
-                                tooltip: '移除食物',
-                                icon: const Icon(Icons.delete_outline),
-                              ),
-                            ],
-                          ),
-                          onTap: () => _selectFood(food),
-                        );
-                      },
-                    ),
+            const SizedBox(height: 8),
+            Text(message, textAlign: TextAlign.center),
+            const SizedBox(height: 20),
+            FilledButton.icon(
+              key: const Key('retryLoadFoodsButton'),
+              onPressed: _loadFoods,
+              icon: const Icon(Icons.refresh),
+              label: const Text('重新載入'),
             ),
           ],
         ),
       ),
+    );
+  }
+
+  Widget _buildLoadedContent() {
+    final filteredFoods = _filteredFoods;
+    return Padding(
+      padding: const EdgeInsets.all(16),
+      child: Column(
+        children: [
+          TextField(
+            key: const Key('foodSearchField'),
+            onChanged: (value) => setState(() => _query = value),
+            decoration: const InputDecoration(
+              labelText: '搜尋食物',
+              prefixIcon: Icon(Icons.search),
+              border: OutlineInputBorder(),
+            ),
+          ),
+          const SizedBox(height: 12),
+          SizedBox(
+            width: double.infinity,
+            child: FilledButton.icon(
+              key: const Key('createNewFoodButton'),
+              onPressed: _createAndAddFood,
+              icon: const Icon(Icons.add),
+              label: const Text('建立新食物'),
+            ),
+          ),
+          const SizedBox(height: 12),
+          Expanded(
+            child: _foods.isEmpty
+                ? _buildEmptyState()
+                : filteredFoods.isEmpty
+                ? _buildNoResults()
+                : ListView.separated(
+                    itemCount: filteredFoods.length,
+                    separatorBuilder: (_, _) => const Divider(height: 1),
+                    itemBuilder: (context, index) {
+                      final food = filteredFoods[index];
+                      return ListTile(
+                        key: ValueKey('food_${food.id}_$index'),
+                        title: Text(food.name),
+                        subtitle: Text(
+                          '每份 ${food.calories} kcal • '
+                          '蛋白質 ${_formatNumber(food.protein)} g',
+                        ),
+                        trailing: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            IconButton(
+                              key: ValueKey('edit_food_${food.id}'),
+                              onPressed: food.id == null
+                                  ? null
+                                  : () => _editFood(food),
+                              tooltip: '編輯食物',
+                              icon: const Icon(Icons.edit_outlined),
+                            ),
+                            IconButton(
+                              key: ValueKey('delete_food_${food.id}'),
+                              onPressed: food.id == null
+                                  ? null
+                                  : () => _confirmAndRemoveFood(food),
+                              tooltip: '移除食物',
+                              icon: const Icon(Icons.delete_outline),
+                            ),
+                          ],
+                        ),
+                        onTap: () => _selectFood(food),
+                      );
+                    },
+                  ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(title: const Text('食物資料庫')),
+      body: _isLoading
+          ? const Center(child: CircularProgressIndicator())
+          : _loadError != null
+          ? _buildLoadError()
+          : _buildLoadedContent(),
     );
   }
 }
